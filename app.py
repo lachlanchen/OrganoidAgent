@@ -2,6 +2,7 @@
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import mimetypes
 import os
@@ -52,6 +53,7 @@ TABLE_EXTS = {".csv", ".tsv", ".xlsx", ".xls"}
 ANALYSIS_EXTS = {".h5ad", ".h5", ".hdf5"}
 ARCHIVE_EXTS = {".zip", ".tgz", ".tar", ".tar.gz"}
 DOC_EXTS = {".pdf", ".docx"}
+MAX_ARCHIVE_PREVIEW_BYTES = 50 * 1024 * 1024
 
 
 def format_bytes(num):
@@ -306,25 +308,122 @@ def ensure_preview_dir():
     PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def preview_tiff(path):
-    if tifffile is None or Image is None or np is None:
-        return {"error": "tifffile/Pillow/numpy not installed"}
+def _is_image_name(name):
+    return Path(name).suffix.lower() in IMAGE_EXTS
+
+
+def _normalize_frame(arr):
+    arr = np.asarray(arr)
+    if arr.ndim == 3:
+        if arr.shape[-1] in {3, 4}:
+            arr = arr[..., 0]
+        elif arr.shape[0] in {3, 4}:
+            arr = arr[0]
+        else:
+            arr = arr[arr.shape[0] // 2]
+    elif arr.ndim > 3:
+        while arr.ndim > 3:
+            arr = arr[arr.shape[0] // 2]
+        if arr.ndim == 3:
+            arr = arr[arr.shape[0] // 2]
+    arr = arr.astype("float32")
+    arr -= arr.min()
+    denom = arr.max() if arr.max() else 1.0
+    return (arr / denom * 255.0).clip(0, 255).astype("uint8")
+
+
+def _read_tiff_frame(source):
+    with tifffile.TiffFile(source) as tif:
+        series = tif.series[0]
+        if series.pages and len(series.pages) > 1:
+            page = series.pages[len(series.pages) // 2]
+            arr = page.asarray()
+        else:
+            arr = series.asarray()
+    return _normalize_frame(arr)
+
+
+def _write_preview_image(arr, preview_name):
     ensure_preview_dir()
-    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
-    preview_name = f"{digest}.png"
     preview_path = PREVIEW_DIR / preview_name
     if not preview_path.exists():
-        arr = tifffile.imread(path)
-        if arr.ndim > 2:
-            arr = arr[..., 0]
-        arr = arr.astype("float32")
-        arr -= arr.min()
-        denom = arr.max() if arr.max() else 1.0
-        arr = (arr / denom * 255.0).clip(0, 255).astype("uint8")
         image = Image.fromarray(arr)
         image.thumbnail((1024, 1024))
         image.save(preview_path)
+    return preview_path
+
+
+def preview_tiff(path):
+    if tifffile is None or Image is None or np is None:
+        return {"error": "tifffile/Pillow/numpy not installed"}
+    digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
+    preview_name = f"{digest}.png"
+    try:
+        arr = _read_tiff_frame(path)
+        _write_preview_image(arr, preview_name)
+    except Exception as exc:
+        return {"error": f"tiff preview failed: {exc}"}
     return {"preview_url": f"/previews/{preview_name}"}
+
+
+def _preview_image_bytes(data, name_hint, seed):
+    if Image is None or np is None:
+        return {"error": "Pillow/numpy not installed"}
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+    preview_name = f"{digest}.png"
+    preview_path = PREVIEW_DIR / preview_name
+    if preview_path.exists():
+        return {"preview_url": f"/previews/{preview_name}"}
+    if name_hint.lower().endswith((".tif", ".tiff")) and tifffile is not None:
+        arr = _read_tiff_frame(io.BytesIO(data))
+        _write_preview_image(arr, preview_name)
+        return {"preview_url": f"/previews/{preview_name}"}
+    ensure_preview_dir()
+    image = Image.open(io.BytesIO(data))
+    image.thumbnail((1024, 1024))
+    image.save(preview_path)
+    return {"preview_url": f"/previews/{preview_name}"}
+
+
+def preview_archive(path, limit=200):
+    preview = {"entries": list_archive(path, limit=limit)}
+    if Image is None:
+        return preview
+    try:
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as zf:
+                for info in zf.infolist():
+                    if info.is_dir() or not _is_image_name(info.filename):
+                        continue
+                    if info.file_size > MAX_ARCHIVE_PREVIEW_BYTES:
+                        continue
+                    with zf.open(info) as fh:
+                        data = fh.read()
+                    result = _preview_image_bytes(data, info.filename, f"{path}:{info.filename}")
+                    if "preview_url" in result:
+                        preview.update(result)
+                        preview["preview_entry"] = info.filename
+                        break
+        elif path.suffix.lower() in {".tgz", ".tar"} or path.name.endswith(".tar.gz"):
+            mode = "r:gz" if path.name.endswith(".tar.gz") or path.suffix == ".tgz" else "r"
+            with tarfile.open(path, mode) as tf:
+                for member in tf.getmembers():
+                    if not member.isfile() or not _is_image_name(member.name):
+                        continue
+                    if member.size > MAX_ARCHIVE_PREVIEW_BYTES:
+                        continue
+                    handle = tf.extractfile(member)
+                    if handle is None:
+                        continue
+                    data = handle.read()
+                    result = _preview_image_bytes(data, member.name, f"{path}:{member.name}")
+                    if "preview_url" in result:
+                        preview.update(result)
+                        preview["preview_entry"] = member.name
+                        break
+    except Exception as exc:
+        preview["preview_error"] = str(exc)
+    return preview
 
 
 class IndexHandler(tornado.web.RequestHandler):
@@ -391,10 +490,8 @@ class PreviewHandler(tornado.web.RequestHandler):
         elif kind == "analysis":
             payload["preview"] = preview_anndata(path)
         elif kind == "archive":
-            payload["preview"] = {
-                "entries": list_archive(path),
-                "note": "Use Extract to unpack large archives.",
-            }
+            payload["preview"] = preview_archive(path)
+            payload["preview"]["note"] = "Use Extract to unpack large archives."
         elif kind == "gzip":
             payload["preview"] = preview_text_gz(path)
         elif kind == "document":

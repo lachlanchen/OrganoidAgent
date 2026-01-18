@@ -103,9 +103,13 @@ function renderPreview(containerId, payload) {
     const entries = payload.preview.entries
       .map((entry) => `<div>${entry.name}</div>`)
       .join("");
+    const previewImage = payload.preview.preview_url
+      ? `<div class="muted">Preview: ${payload.preview.preview_entry}</div><img src="${payload.preview.preview_url}" alt="Archive preview" />`
+      : "";
     container.innerHTML = `
       <div class="tag">Archive</div>
       <button class="tab" id="extract-btn">Extract</button>
+      ${previewImage}
       <div class="preview-body" style="margin-top:10px">${entries || "No entries."}</div>
     `;
     const btn = container.querySelector("#extract-btn");
