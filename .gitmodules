@@ -1,0 +1,3 @@
+[submodule "papers/prompt-is-all-you-need"]
+	path = papers/prompt-is-all-you-need
+	url = ../prompt-is-all-you-need

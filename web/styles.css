@@ -1,0 +1,242 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f6f4f1;
+  --bg-alt: #f1efe9;
+  --ink: #171717;
+  --muted: #5b5b5b;
+  --card: #ffffff;
+  --line: rgba(12, 12, 12, 0.1);
+  --accent-1: #d93b5f;
+  --accent-2: #2b6cb0;
+  --accent-3: #ed8936;
+  --shadow: 0 12px 40px rgba(16, 24, 40, 0.12);
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 20% 20%, #fde8ea 0%, transparent 40%),
+    radial-gradient(circle at 80% 10%, #dbeafe 0%, transparent 45%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-alt) 100%);
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 36px;
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  box-shadow: 0 0 0 6px rgba(217, 59, 95, 0.15);
+}
+
+.title {
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.stats {
+  font-size: 13px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.6);
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  padding: 20px 36px 8px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab.active {
+  border-color: rgba(217, 59, 95, 0.4);
+  box-shadow: inset 0 0 0 2px rgba(217, 59, 95, 0.15);
+  color: var(--accent-1);
+}
+
+.tab:hover {
+  transform: translateY(-1px);
+}
+
+.content {
+  padding: 16px 36px 40px;
+}
+
+.panel {
+  display: none;
+  animation: fadeUp 0.6s ease forwards;
+}
+
+.panel.active {
+  display: block;
+}
+
+.grid.split {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr);
+  gap: 20px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(12, 12, 12, 0.04);
+}
+
+.card.preview {
+  margin-top: 20px;
+}
+
+.card h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.list-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(250, 250, 250, 0.9);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.list-item:hover {
+  border-color: rgba(43, 108, 176, 0.4);
+  transform: translateY(-1px);
+}
+
+.list-item .meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.preview-body {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: #0f172a;
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 16px;
+  min-height: 160px;
+  overflow: auto;
+}
+
+.preview-body img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: rgba(43, 108, 176, 0.12);
+  color: var(--accent-2);
+}
+
+.footer {
+  padding: 20px 36px 40px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
+
+th,
+td {
+  border-bottom: 1px solid rgba(12, 12, 12, 0.08);
+  padding: 6px;
+  text-align: left;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .grid.split {
+    grid-template-columns: 1fr;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
