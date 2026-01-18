@@ -73,8 +73,18 @@ function renderPreview(containerId, payload) {
 
   if (payload.kind === "analysis" && payload.preview) {
     const summary = payload.preview;
+    const imageHtml = summary.preview_url
+      ? `<img src="${summary.preview_url}" alt="${payload.name}" />`
+      : "";
+    const previewMeta = summary.preview_url
+      ? `<p>Embedding: ${summary.preview_source} (${summary.preview_points} points)</p>`
+      : summary.preview_error
+      ? `<p class="muted">Preview: ${summary.preview_error}</p>`
+      : "";
     container.innerHTML = `
       <div class="tag">AnnData</div>
+      ${imageHtml}
+      ${previewMeta}
       <p>Observations: ${summary.n_obs}</p>
       <p>Variables: ${summary.n_vars}</p>
       <p><strong>Obs columns:</strong> ${summary.obs_columns.join(", ") || "—"}</p>

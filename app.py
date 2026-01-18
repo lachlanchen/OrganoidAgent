@@ -29,9 +29,10 @@ except Exception:  # pragma: no cover - optional at runtime
     np = None
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageDraw
 except Exception:  # pragma: no cover - optional at runtime
     Image = None
+    ImageDraw = None
 
 try:
     import tifffile
@@ -174,17 +175,120 @@ def preview_table(path, max_rows=50):
     }
 
 
+def _sample_indices(total, max_items, rng):
+    if total <= max_items:
+        return np.arange(total)
+    return rng.choice(total, size=max_items, replace=False)
+
+
+def _embedding_from_obsm(data, max_points):
+    obsm_keys = list(data.obsm_keys())
+    for key in ("X_umap", "X_tsne", "X_pca"):
+        if key in obsm_keys:
+            emb = data.obsm[key]
+            if emb is None:
+                continue
+            try:
+                n_obs = emb.shape[0]
+            except Exception:
+                emb = np.asarray(emb)
+                n_obs = emb.shape[0]
+            idx = _sample_indices(n_obs, max_points, np.random.default_rng(0))
+            try:
+                coords = np.asarray(emb[idx][:, :2])
+            except Exception:
+                coords = np.asarray(emb)[:, :2]
+            return coords, key
+    return None, None
+
+
+def _pca_preview(data, max_points=2000, max_vars=2000):
+    if np is None:
+        return None
+    rng = np.random.default_rng(0)
+    obs_idx = _sample_indices(int(data.n_obs), max_points, rng)
+    var_idx = _sample_indices(int(data.n_vars), max_vars, rng)
+    view = data[obs_idx, var_idx]
+    matrix = view.X
+    if hasattr(matrix, "toarray"):
+        matrix = matrix.toarray()
+    matrix = np.asarray(matrix, dtype="float32")
+    if matrix.size == 0:
+        return None
+    matrix -= matrix.mean(axis=0, keepdims=True)
+    try:
+        u, s, _ = np.linalg.svd(matrix, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return None
+    coords = u[:, :2] * s[:2]
+    return coords
+
+
+def _render_scatter(coords, preview_name, size=900, point_radius=2):
+    if Image is None or ImageDraw is None or np is None:
+        return None, "Pillow/numpy not installed"
+    coords = np.asarray(coords)
+    if coords.ndim != 2 or coords.shape[1] < 2:
+        return None, "Invalid embedding"
+    mask = np.isfinite(coords[:, 0]) & np.isfinite(coords[:, 1])
+    coords = coords[mask]
+    if coords.size == 0:
+        return None, "No finite points"
+    ensure_preview_dir()
+    preview_path = PREVIEW_DIR / preview_name
+    if preview_path.exists():
+        return preview_path, None
+    x = coords[:, 0]
+    y = coords[:, 1]
+    min_x, max_x = float(x.min()), float(x.max())
+    min_y, max_y = float(y.min()), float(y.max())
+    span_x = max_x - min_x or 1.0
+    span_y = max_y - min_y or 1.0
+    pad = 24
+    img = Image.new("RGB", (size, size), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    for px, py in coords:
+        sx = pad + (px - min_x) / span_x * (size - 2 * pad)
+        sy = pad + (py - min_y) / span_y * (size - 2 * pad)
+        left = sx - point_radius
+        top = size - sy - point_radius
+        right = sx + point_radius
+        bottom = size - sy + point_radius
+        draw.ellipse((left, top, right, bottom), fill=(40, 102, 194))
+    img.save(preview_path)
+    return preview_path, None
+
+
 def preview_anndata(path):
-    if ad is None:
-        return {"error": "anndata not installed"}
+    if ad is None or np is None:
+        return {"error": "anndata/numpy not installed"}
     data = ad.read_h5ad(path, backed="r")
-    return {
+    summary = {
         "n_obs": int(data.n_obs),
         "n_vars": int(data.n_vars),
         "obs_columns": list(data.obs_keys())[:50],
         "var_columns": list(data.var_keys())[:50],
         "uns_keys": list(data.uns_keys())[:50],
     }
+    coords, source = _embedding_from_obsm(data, max_points=2500)
+    if coords is None:
+        coords = _pca_preview(data)
+        source = "pca_preview" if coords is not None else None
+    if coords is not None:
+        digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
+        preview_name = f"{digest}-{source}.png"
+        preview_path, plot_error = _render_scatter(coords, preview_name)
+        if preview_path:
+            summary["preview_url"] = f"/previews/{preview_name}"
+            summary["preview_points"] = int(coords.shape[0])
+            summary["preview_source"] = source
+        elif plot_error:
+            summary["preview_error"] = plot_error
+    else:
+        summary["preview_error"] = "No embedding available"
+    if getattr(data, "isbacked", False) and getattr(data, "file", None) is not None:
+        data.file.close()
+    return summary
 
 
 def preview_text_gz(path, max_lines=50):
