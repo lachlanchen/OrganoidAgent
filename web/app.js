@@ -42,6 +42,92 @@ function renderList(containerId, items, onClick) {
   });
 }
 
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  const pattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let result = "";
+  let lastIndex = 0;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    result += escapeHtml(text.slice(lastIndex, match.index));
+    const label = escapeHtml(match[1]);
+    const url = match[2];
+    if (url.startsWith("http://") || url.startsWith("https://")) {
+      result += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    } else {
+      result += `${label} (${escapeHtml(url)})`;
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  result += escapeHtml(text.slice(lastIndex));
+  return result;
+}
+
+function renderMarkdown(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  let html = "";
+  let inList = false;
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) {
+        html += "</ul>";
+        inList = false;
+      }
+      return;
+    }
+    if (trimmed.startsWith("### ")) {
+      if (inList) {
+        html += "</ul>";
+        inList = false;
+      }
+      html += `<h4>${renderInlineMarkdown(trimmed.slice(4))}</h4>`;
+      return;
+    }
+    if (trimmed.startsWith("## ")) {
+      if (inList) {
+        html += "</ul>";
+        inList = false;
+      }
+      html += `<h3>${renderInlineMarkdown(trimmed.slice(3))}</h3>`;
+      return;
+    }
+    if (trimmed.startsWith("# ")) {
+      if (inList) {
+        html += "</ul>";
+        inList = false;
+      }
+      html += `<h3>${renderInlineMarkdown(trimmed.slice(2))}</h3>`;
+      return;
+    }
+    if (trimmed.startsWith("- ")) {
+      if (!inList) {
+        html += "<ul>";
+        inList = true;
+      }
+      html += `<li>${renderInlineMarkdown(trimmed.slice(2))}</li>`;
+      return;
+    }
+    if (inList) {
+      html += "</ul>";
+      inList = false;
+    }
+    html += `<p>${renderInlineMarkdown(trimmed)}</p>`;
+  });
+  if (inList) {
+    html += "</ul>";
+  }
+  return html;
+}
+
 function renderPreview(containerId, payload) {
   const container = document.getElementById(containerId);
   if (!payload) {
@@ -142,6 +228,24 @@ function renderPreview(containerId, payload) {
   container.textContent = "Preview not available.";
 }
 
+async function loadDatasetMetadata(dataset) {
+  const container = document.getElementById("dataset-info");
+  if (!container) {
+    return;
+  }
+  container.textContent = "Loading metadata…";
+  try {
+    const data = await fetchJson(`/api/datasets/${dataset}/metadata`);
+    if (!data.markdown) {
+      container.textContent = "No metadata available.";
+      return;
+    }
+    container.innerHTML = renderMarkdown(data.markdown);
+  } catch (err) {
+    container.textContent = "No metadata available.";
+  }
+}
+
 async function loadDatasets() {
   const data = await fetchJson("/api/datasets");
   state.datasets = data.datasets;
@@ -172,6 +276,7 @@ async function loadDatasetFiles(dataset) {
     const preview = await fetchJson(`/api/preview?path=${file.path}`);
     renderPreview("preview-panel", preview);
   });
+  loadDatasetMetadata(dataset);
 }
 
 async function loadCategory(category, listId, previewId) {

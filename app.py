@@ -44,6 +44,7 @@ except Exception:  # pragma: no cover - optional at runtime
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "datasets"
 WEB_DIR = BASE_DIR / "web"
+METADATA_DIR = BASE_DIR / "metadata"
 CACHE_DIR = DATA_DIR / ".cache"
 PREVIEW_DIR = CACHE_DIR / "previews"
 
@@ -54,6 +55,10 @@ ANALYSIS_EXTS = {".h5ad", ".h5", ".hdf5"}
 ARCHIVE_EXTS = {".zip", ".tgz", ".tar", ".tar.gz"}
 DOC_EXTS = {".pdf", ".docx"}
 MAX_ARCHIVE_PREVIEW_BYTES = 50 * 1024 * 1024
+
+DATASET_METADATA = {
+    "zenodo_10643410": "zenodo_10643410.md",
+}
 
 
 def format_bytes(num):
@@ -96,6 +101,8 @@ def list_datasets():
     for entry in sorted(DATA_DIR.iterdir()):
         if not entry.is_dir():
             continue
+        if entry.name.startswith("."):
+            continue
         size = 0
         count = 0
         for path in entry.rglob("*"):
@@ -112,6 +119,16 @@ def list_datasets():
             }
         )
     return datasets
+
+
+def load_dataset_metadata(dataset_name):
+    filename = DATASET_METADATA.get(dataset_name)
+    if not filename:
+        return None
+    path = (METADATA_DIR / filename).resolve()
+    if not path.exists():
+        return None
+    return {"markdown": path.read_text(encoding="utf-8")}
 
 
 def list_files(dataset_path):
@@ -448,6 +465,16 @@ class DatasetFilesHandler(tornado.web.RequestHandler):
         self.write({"files": list_files(dataset_path)})
 
 
+class DatasetMetadataHandler(tornado.web.RequestHandler):
+    def get(self, dataset_name):
+        metadata = load_dataset_metadata(dataset_name)
+        if not metadata:
+            self.set_status(404)
+            self.write({"error": "Metadata not found"})
+            return
+        self.write(metadata)
+
+
 class CategoryHandler(tornado.web.RequestHandler):
     def get(self, category):
         category = category.lower()
@@ -540,6 +567,7 @@ def make_app():
         [
             (r"/", IndexHandler),
             (r"/api/datasets", DatasetsHandler),
+            (r"/api/datasets/([^/]+)/metadata", DatasetMetadataHandler),
             (r"/api/datasets/([^/]+)", DatasetFilesHandler),
             (r"/api/category/(datasets|segmentation|features|analysis)", CategoryHandler),
             (r"/api/preview", PreviewHandler),
