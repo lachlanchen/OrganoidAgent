@@ -3,6 +3,9 @@ datasets/
 __pycache__/
 *.pyc
 OrganoidData/
-references/
+OrganoidData
+references/*
+!references/
+!references/*.md
 segmentation/
 selected_data/
