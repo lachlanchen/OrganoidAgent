@@ -2,3 +2,7 @@ datasets/
 .DS_Store
 __pycache__/
 *.pyc
+OrganoidData/
+references/
+segmentation/
+selected_data/
