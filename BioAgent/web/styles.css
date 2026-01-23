@@ -360,11 +360,18 @@ button.danger {
 
 .chat-input {
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: stretch;
 }
 
 .chat-input textarea {
   min-height: 90px;
+}
+
+.chat-input button {
+  align-self: stretch;
+  height: 100%;
 }
 
 .bench-area {
