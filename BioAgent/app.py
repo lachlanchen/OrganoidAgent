@@ -92,6 +92,7 @@ class RunHandler(BaseHandler):
             "task": payload.get("task"),
             "prompt": payload.get("prompt", "").strip(),
             "notes": payload.get("notes", "").strip(),
+            "inputs": payload.get("inputs", []),
             "summary": "Job queued. Configure hand drivers to execute analysis.",
         }
         JOBS.append(job)

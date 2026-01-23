@@ -6,6 +6,10 @@ const handSelect = document.getElementById("hand");
 const taskSelect = document.getElementById("task");
 const promptField = document.getElementById("prompt");
 const notesField = document.getElementById("notes");
+const fileInput = document.getElementById("task-files");
+const folderInput = document.getElementById("task-folder");
+const fileLabel = document.getElementById("task-files-label");
+const folderLabel = document.getElementById("task-folder-label");
 const statusIndicator = document.getElementById("status-indicator");
 const jobCount = document.getElementById("job-count");
 const jobsContainer = document.getElementById("jobs");
@@ -185,6 +189,26 @@ function addChatMessage(role, content) {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
+function describeSelection(list, emptyText) {
+  if (!list || list.length === 0) {
+    return emptyText;
+  }
+  const names = Array.from(list).slice(0, 3).map((file) => file.name || file.webkitRelativePath);
+  const more = list.length > 3 ? ` +${list.length - 3} more` : \"\";
+  return `${list.length} selected: ${names.join(\", \")}${more}`;
+}
+
+function collectInputs() {
+  const inputs = [];
+  Array.from(fileInput.files || []).forEach((file) => {
+    inputs.push({ name: file.name, size: file.size, kind: \"file\" });
+  });
+  Array.from(folderInput.files || []).forEach((file) => {
+    inputs.push({ name: file.webkitRelativePath || file.name, size: file.size, kind: \"folder\" });
+  });
+  return inputs;
+}
+
 function renderBench(jobs) {
   bench.innerHTML = "";
   if (!jobs.length) {
@@ -256,6 +280,7 @@ async function runJob() {
     task: taskSelect.value,
     prompt: promptField.value,
     notes: notesField.value,
+    inputs: collectInputs(),
   };
 
   addChatMessage("user", `Run ${payload.task} using ${payload.eyes}/${payload.mind}/${payload.hand}.`);
@@ -332,6 +357,14 @@ chatSend.addEventListener("click", () => {
   addChatMessage("user", message);
   addChatMessage("assistant", "Message received. Use Task Studio to run jobs." );
   chatInput.value = "";
+});
+
+fileInput.addEventListener("change", () => {
+  fileLabel.textContent = describeSelection(fileInput.files, "No files selected.");
+});
+
+folderInput.addEventListener("change", () => {
+  folderLabel.textContent = describeSelection(folderInput.files, "No folder selected.");
 });
 
 loadOptions();

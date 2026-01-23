@@ -161,6 +161,10 @@ textarea {
   color: var(--ink);
 }
 
+input[type="file"] {
+  background: #fffdf8;
+}
+
 textarea {
   resize: vertical;
   min-height: 140px;

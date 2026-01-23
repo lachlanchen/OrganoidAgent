@@ -102,6 +102,18 @@
                   <small>Optional context for this run.</small>
                 </label>
               </div>
+              <div class="grid two">
+                <label class="field">
+                  <span>Files</span>
+                  <input id="task-files" type="file" multiple />
+                  <small id="task-files-label">No files selected.</small>
+                </label>
+                <label class="field">
+                  <span>Folder</span>
+                  <input id="task-folder" type="file" webkitdirectory directory />
+                  <small id="task-folder-label">No folder selected.</small>
+                </label>
+              </div>
               <label class="field">
                 <span>Prompt</span>
                 <textarea id="prompt" rows="6"></textarea>
