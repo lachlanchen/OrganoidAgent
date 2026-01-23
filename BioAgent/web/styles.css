@@ -25,9 +25,9 @@ body {
 }
 
 .page {
-  max-width: 1100px;
+  max-width: 100%;
   margin: 0 auto;
-  padding: 40px 24px 60px;
+  padding: 40px 48px 60px;
 }
 
 .hero {
@@ -90,6 +90,14 @@ h1 {
 
 .chip.neutral {
   color: var(--muted);
+}
+
+.chip.good {
+  color: #1d6b3a;
+}
+
+.chip.bad {
+  color: #b23c2f;
 }
 
 main {
@@ -162,6 +170,7 @@ textarea {
   display: flex;
   gap: 12px;
   margin-top: 16px;
+  flex-wrap: wrap;
 }
 
 button {
@@ -183,6 +192,11 @@ button.ghost {
   background: transparent;
   border: 1px solid var(--line);
   color: var(--muted);
+}
+
+button.danger {
+  border-color: #e3b6ad;
+  color: #b23c2f;
 }
 
 .job-list {
@@ -212,6 +226,115 @@ button.ghost {
   color: var(--muted);
 }
 
+.template-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 20px;
+}
+
+.template-list {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px;
+  background: #fffdf8;
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.template-item {
+  border: 1px solid transparent;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f7f1ea;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.template-item.active {
+  border-color: var(--accent);
+  background: #edf7f3;
+}
+
+.template-item h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.template-item p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.pane {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: #fffdf8;
+  display: grid;
+  gap: 12px;
+  min-height: 320px;
+}
+
+.pane-header {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+}
+
+.chat-history {
+  display: grid;
+  gap: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.chat-message {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f7f1ea;
+  display: grid;
+  gap: 6px;
+}
+
+.chat-message.user {
+  border-left: 4px solid var(--accent);
+}
+
+.chat-message.assistant {
+  border-left: 4px solid var(--accent-2);
+}
+
+.chat-input {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-input textarea {
+  min-height: 90px;
+}
+
+.bench-area {
+  display: grid;
+  gap: 12px;
+}
+
+.bench-card {
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  padding: 14px;
+  color: var(--muted);
+  background: #fffaf3;
+}
+
 footer {
   margin-top: 40px;
   display: flex;
@@ -220,13 +343,15 @@ footer {
   font-size: 13px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .hero {
     grid-template-columns: 1fr;
   }
 
   .grid.three,
-  .grid.two {
+  .grid.two,
+  .workspace-grid,
+  .template-grid {
     grid-template-columns: 1fr;
   }
 

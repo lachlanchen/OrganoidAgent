@@ -61,14 +61,39 @@
 
         <section class="panel">
           <div class="panel-header">
+            <h2>Template Library</h2>
+            <p>Create, edit, and reuse task templates for the SDK runner.</p>
+          </div>
+          <div class="template-grid">
+            <div class="template-list" id="template-list"></div>
+            <div class="template-editor">
+              <label class="field">
+                <span>Template Name</span>
+                <input id="template-label" type="text" placeholder="Segmentation QC" />
+              </label>
+              <label class="field">
+                <span>Template Prompt</span>
+                <textarea id="template-body" rows="6"></textarea>
+              </label>
+              <div class="actions">
+                <button id="template-save" class="primary">Save Template</button>
+                <button id="template-new" class="ghost">New</button>
+                <button id="template-delete" class="ghost danger">Delete</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
             <h2>Task Studio</h2>
-            <p>Pick a task template or write a custom prompt.</p>
+            <p>Pick a template and run a task with custom notes.</p>
           </div>
           <div class="grid two">
             <label class="field">
               <span>Task Template</span>
               <select id="task"></select>
-              <small>Pre-built prompt for common workflows.</small>
+              <small>Templates are editable in the library above.</small>
             </label>
             <label class="field">
               <span>Notes</span>
@@ -82,6 +107,31 @@
           <div class="actions">
             <button id="run" class="primary">Run BioAgent</button>
             <button id="refresh" class="ghost">Refresh Jobs</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Workspace</h2>
+            <p>Chat history on the left, analysis bench on the right.</p>
+          </div>
+          <div class="workspace-grid">
+            <div class="pane">
+              <div class="pane-header">Chat</div>
+              <div id="chat-history" class="chat-history"></div>
+              <div class="chat-input">
+                <textarea id="chat-input" rows="3" placeholder="Ask BioAgent to run or explain tasks..."></textarea>
+                <button id="chat-send" class="primary">Send</button>
+              </div>
+            </div>
+            <div class="pane">
+              <div class="pane-header">Bench</div>
+              <div id="bench" class="bench-area">
+                <div class="bench-card">
+                  Visualizations, tables, and artifacts will appear here.
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
