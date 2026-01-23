@@ -194,17 +194,17 @@ function describeSelection(list, emptyText) {
     return emptyText;
   }
   const names = Array.from(list).slice(0, 3).map((file) => file.name || file.webkitRelativePath);
-  const more = list.length > 3 ? ` +${list.length - 3} more` : \"\";
-  return `${list.length} selected: ${names.join(\", \")}${more}`;
+  const more = list.length > 3 ? ` +${list.length - 3} more` : "";
+  return `${list.length} selected: ${names.join(", ")}${more}`;
 }
 
 function collectInputs() {
   const inputs = [];
   Array.from(fileInput.files || []).forEach((file) => {
-    inputs.push({ name: file.name, size: file.size, kind: \"file\" });
+    inputs.push({ name: file.name, size: file.size, kind: "file" });
   });
   Array.from(folderInput.files || []).forEach((file) => {
-    inputs.push({ name: file.webkitRelativePath || file.name, size: file.size, kind: \"folder\" });
+    inputs.push({ name: file.webkitRelativePath || file.name, size: file.size, kind: "folder" });
   });
   return inputs;
 }
