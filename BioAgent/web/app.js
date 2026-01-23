@@ -24,6 +24,8 @@ const templateBody = document.getElementById("template-body");
 const templateSave = document.getElementById("template-save");
 const templateNew = document.getElementById("template-new");
 const templateDelete = document.getElementById("template-delete");
+const templateColumn = document.getElementById("template-column");
+const taskColumn = document.getElementById("task-column");
 
 const chatHistory = document.getElementById("chat-history");
 const chatInput = document.getElementById("chat-input");
@@ -34,6 +36,7 @@ let templates = [];
 let activeTemplateId = null;
 let selectedFiles = [];
 let selectedFolderFiles = [];
+let baseTemplateListHeight = null;
 
 function setStatus(text, state) {
   statusIndicator.textContent = text;
@@ -106,6 +109,8 @@ function renderTemplateList() {
 
     templateList.appendChild(item);
   });
+
+  requestAnimationFrame(syncTemplateListHeight);
 }
 
 function renderTemplateEditor(template) {
@@ -116,6 +121,7 @@ function renderTemplateEditor(template) {
   }
   templateLabel.value = template.label || "";
   templateBody.value = template.prompt || "";
+  requestAnimationFrame(syncTemplateListHeight);
 }
 
 function refreshTaskSelect() {
@@ -124,6 +130,7 @@ function refreshTaskSelect() {
   if (selected) {
     promptField.value = selected.prompt;
   }
+  requestAnimationFrame(syncTemplateListHeight);
 }
 
 function selectTemplate(templateId) {
@@ -177,6 +184,23 @@ function deleteTemplate() {
   renderTemplateList();
   renderTemplateEditor(templates.find((item) => item.id === activeTemplateId));
   refreshTaskSelect();
+}
+
+function syncTemplateListHeight() {
+  if (!templateColumn || !taskColumn || !templateList) {
+    return;
+  }
+  if (baseTemplateListHeight === null) {
+    baseTemplateListHeight = Math.max(templateList.offsetHeight, 320);
+  }
+  templateList.style.maxHeight = `${baseTemplateListHeight}px`;
+  const leftHeight = templateColumn.offsetHeight;
+  const rightHeight = taskColumn.offsetHeight;
+  if (rightHeight > leftHeight) {
+    const diff = rightHeight - leftHeight;
+    const targetHeight = baseTemplateListHeight + diff;
+    templateList.style.maxHeight = `${targetHeight}px`;
+  }
 }
 
 function addChatMessage(role, content) {
@@ -497,3 +521,7 @@ folderDropzone.addEventListener("drop", async (event) => {
 
 loadOptions();
 fetchJobs();
+
+window.addEventListener("resize", () => {
+  requestAnimationFrame(syncTemplateListHeight);
+});
