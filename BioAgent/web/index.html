@@ -103,16 +103,24 @@
                 </label>
               </div>
               <div class="grid two">
-                <label class="field">
+                <div class="field dropzone" id="files-dropzone">
                   <span>Files</span>
-                  <input id="task-files" type="file" multiple />
+                  <div class="dropzone-body">
+                    <div>Drag files here or</div>
+                    <button type="button" class="ghost" id="browse-files">Browse files</button>
+                  </div>
+                  <input id="task-files" type="file" multiple hidden />
                   <small id="task-files-label">No files selected.</small>
-                </label>
-                <label class="field">
+                </div>
+                <div class="field dropzone" id="folder-dropzone">
                   <span>Folder</span>
-                  <input id="task-folder" type="file" webkitdirectory directory />
+                  <div class="dropzone-body">
+                    <div>Drag a folder here or</div>
+                    <button type="button" class="ghost" id="browse-folder">Browse folder</button>
+                  </div>
+                  <input id="task-folder" type="file" webkitdirectory directory hidden />
                   <small id="task-folder-label">No folder selected.</small>
-                </label>
+                </div>
               </div>
               <label class="field">
                 <span>Prompt</span>

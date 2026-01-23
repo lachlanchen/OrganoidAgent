@@ -165,6 +165,31 @@ input[type="file"] {
   background: #fffdf8;
 }
 
+.dropzone {
+  border: 1px dashed var(--line);
+  background: #fffaf3;
+  padding: 14px;
+  border-radius: 14px;
+  gap: 10px;
+}
+
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: #edf7f3;
+}
+
+.dropzone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.dropzone button.ghost {
+  width: fit-content;
+  padding: 8px 14px;
+}
+
 textarea {
   resize: vertical;
   min-height: 140px;

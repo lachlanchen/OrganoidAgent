@@ -10,6 +10,10 @@ const fileInput = document.getElementById("task-files");
 const folderInput = document.getElementById("task-folder");
 const fileLabel = document.getElementById("task-files-label");
 const folderLabel = document.getElementById("task-folder-label");
+const filesDropzone = document.getElementById("files-dropzone");
+const folderDropzone = document.getElementById("folder-dropzone");
+const browseFilesButton = document.getElementById("browse-files");
+const browseFolderButton = document.getElementById("browse-folder");
 const statusIndicator = document.getElementById("status-indicator");
 const jobCount = document.getElementById("job-count");
 const jobsContainer = document.getElementById("jobs");
@@ -28,6 +32,8 @@ const bench = document.getElementById("bench");
 
 let templates = [];
 let activeTemplateId = null;
+let selectedFiles = [];
+let selectedFolderFiles = [];
 
 function setStatus(text, state) {
   statusIndicator.textContent = text;
@@ -189,22 +195,51 @@ function addChatMessage(role, content) {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
+function getRelativePath(file) {
+  return file._relativePath || file.webkitRelativePath || file.name;
+}
+
 function describeSelection(list, emptyText) {
   if (!list || list.length === 0) {
     return emptyText;
   }
-  const names = Array.from(list).slice(0, 3).map((file) => file.name || file.webkitRelativePath);
+  const names = Array.from(list)
+    .slice(0, 3)
+    .map((file) => getRelativePath(file));
   const more = list.length > 3 ? ` +${list.length - 3} more` : "";
   return `${list.length} selected: ${names.join(", ")}${more}`;
 }
 
+function describeFolderSelection(list, emptyText) {
+  if (!list || list.length === 0) {
+    return emptyText;
+  }
+  const paths = Array.from(list).map((file) => getRelativePath(file));
+  const root = paths[0].includes("/") ? paths[0].split("/")[0] : null;
+  const sameRoot = root && paths.every((path) => path.startsWith(`${root}/`));
+  if (sameRoot) {
+    return `Folder: ${root} (${list.length} files)`;
+  }
+  return `${list.length} files selected.`;
+}
+
 function collectInputs() {
   const inputs = [];
-  Array.from(fileInput.files || []).forEach((file) => {
-    inputs.push({ name: file.name, size: file.size, kind: "file" });
+  selectedFiles.forEach((file) => {
+    inputs.push({
+      name: file.name,
+      path: getRelativePath(file),
+      size: file.size,
+      kind: "file",
+    });
   });
-  Array.from(folderInput.files || []).forEach((file) => {
-    inputs.push({ name: file.webkitRelativePath || file.name, size: file.size, kind: "folder" });
+  selectedFolderFiles.forEach((file) => {
+    inputs.push({
+      name: file.name,
+      path: getRelativePath(file),
+      size: file.size,
+      kind: "folder",
+    });
   });
   return inputs;
 }
@@ -227,6 +262,78 @@ function renderBench(jobs) {
     <div>${latest.summary || ""}</div>
   `;
   bench.appendChild(card);
+}
+
+async function readAllEntries(reader) {
+  const entries = [];
+  let batch;
+  do {
+    batch = await new Promise((resolve) => reader.readEntries(resolve));
+    entries.push(...batch);
+  } while (batch.length);
+  return entries;
+}
+
+async function collectEntryFiles(entry) {
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      entry.file((file) => {
+        file._relativePath = entry.fullPath.replace(/^\//, "");
+        resolve([file]);
+      });
+    });
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    const entries = await readAllEntries(reader);
+    const results = [];
+    for (const child of entries) {
+      const childFiles = await collectEntryFiles(child);
+      results.push(...childFiles);
+    }
+    return results;
+  }
+  return [];
+}
+
+async function extractFilesFromDrop(event) {
+  const items = event.dataTransfer.items;
+  if (items && items.length && items[0].webkitGetAsEntry) {
+    const entries = Array.from(items)
+      .map((item) => item.webkitGetAsEntry())
+      .filter(Boolean);
+    const results = [];
+    for (const entry of entries) {
+      const entryFiles = await collectEntryFiles(entry);
+      results.push(...entryFiles);
+    }
+    return results;
+  }
+  return Array.from(event.dataTransfer.files || []);
+}
+
+function setFilesSelection(files) {
+  selectedFiles = files;
+  fileLabel.textContent = describeSelection(selectedFiles, "No files selected.");
+}
+
+function setFolderSelection(files) {
+  selectedFolderFiles = files;
+  folderLabel.textContent = describeFolderSelection(selectedFolderFiles, "No folder selected.");
+}
+
+function handleDragEvents(dropzone) {
+  dropzone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    dropzone.classList.add("dragging");
+  });
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("dragging");
+  });
+  dropzone.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    dropzone.classList.remove("dragging");
+  });
 }
 
 function renderJobs(jobs) {
@@ -360,11 +467,32 @@ chatSend.addEventListener("click", () => {
 });
 
 fileInput.addEventListener("change", () => {
-  fileLabel.textContent = describeSelection(fileInput.files, "No files selected.");
+  setFilesSelection(Array.from(fileInput.files || []));
 });
 
 folderInput.addEventListener("change", () => {
-  folderLabel.textContent = describeSelection(folderInput.files, "No folder selected.");
+  setFolderSelection(Array.from(folderInput.files || []));
+});
+
+browseFilesButton.addEventListener("click", () => {
+  fileInput.click();
+});
+
+browseFolderButton.addEventListener("click", () => {
+  folderInput.click();
+});
+
+handleDragEvents(filesDropzone);
+handleDragEvents(folderDropzone);
+
+filesDropzone.addEventListener("drop", async (event) => {
+  const files = await extractFilesFromDrop(event);
+  setFilesSelection(files);
+});
+
+folderDropzone.addEventListener("drop", async (event) => {
+  const files = await extractFilesFromDrop(event);
+  setFolderSelection(files);
 });
 
 loadOptions();
