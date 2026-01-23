@@ -232,6 +232,22 @@ button.danger {
   gap: 20px;
 }
 
+.split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+}
+
+.split-column {
+  display: grid;
+  gap: 16px;
+}
+
+.split-column + .split-column {
+  border-left: 1px solid var(--line);
+  padding-left: 24px;
+}
+
 .template-list {
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -351,8 +367,14 @@ footer {
   .grid.three,
   .grid.two,
   .workspace-grid,
-  .template-grid {
+  .template-grid,
+  .split-grid {
     grid-template-columns: 1fr;
+  }
+
+  .split-column + .split-column {
+    border-left: none;
+    padding-left: 0;
   }
 
   footer {
