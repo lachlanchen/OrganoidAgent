@@ -61,6 +61,11 @@ Run full training:
 ./BioAgentUtils/run_train_pix2pix_yichao.sh
 ```
 
+Current default prep mode in launcher:
+- train set: first paired frame per top-level folder
+- crop each selected 1024x1024 pair into 4 tiles of 512x512
+- expected train samples for Yichao-2: `11 folders x 4 = 44`
+
 Start in a tmux session (interactive; Ctrl+C works normally):
 
 ```bash
@@ -70,6 +75,8 @@ tmux attach -t pix2pix-train
 
 Live logs now include:
 - startup config (device, pair counts, loader steps)
+- scan progress while indexing dataset files
+- preprocessing progress (selected objects and crop expansion)
 - per-step progress with ETA and samples/sec
 - epoch and validation summaries
 
@@ -77,6 +84,8 @@ Useful flags:
 - `--log-interval 10` print every 10 train/eval steps
 - `--amp` / `--no-amp` enable/disable mixed precision on CUDA
 - `--num-workers 4 --prefetch-factor 2` dataloader throughput tuning
+- `--train-crops-per-image 0` disable crop expansion
+- `--train-first-pair-per-object` / `--verify-first-pair-per-object`
 
 Quick smoke run:
 
@@ -90,3 +99,22 @@ Quick smoke run:
 Notes:
 - `--epochs 1` still runs all train pairs unless you set `--max-train-steps`.
 - If another training process is already running, throughput can drop heavily.
+
+## Prepare Paired NPY (Yichao)
+
+Prepare paired `c0 -> c1` arrays as `.npy` with progress logs:
+
+```bash
+./BioAgentUtils/run_prepare_yichao_pairs_to_npy.sh
+```
+
+Default prep behavior:
+- train: first pair per top-level folder, then 4 crops of `512x512` per pair
+- test: all pairs in `Data-Yichao-1`, 4 crops of `512x512` per pair
+
+Default outputs:
+- `results/yichao_paired_npy/train_input.npy`
+- `results/yichao_paired_npy/train_target.npy`
+- `results/yichao_paired_npy/test_input.npy`
+- `results/yichao_paired_npy/test_target.npy`
+- metadata JSON files and `summary.json`

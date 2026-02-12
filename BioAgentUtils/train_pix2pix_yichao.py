@@ -42,6 +42,7 @@ class PairItem:
     input_path: Path
     target_path: Path
     key: str
+    crop_box: Tuple[int, int, int, int] | None = None
 
 
 class PairedYichaoDataset(Dataset):
@@ -53,8 +54,10 @@ class PairedYichaoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.pairs)
 
-    def _load_gray(self, path: Path) -> Image.Image:
+    def _load_gray(self, path: Path, crop_box: Tuple[int, int, int, int] | None) -> Image.Image:
         image = Image.open(path).convert("L")
+        if crop_box is not None:
+            image = image.crop(crop_box)
         if self.image_size > 0 and image.size != (self.image_size, self.image_size):
             image = image.resize((self.image_size, self.image_size), Image.BILINEAR)
         return image
@@ -67,8 +70,8 @@ class PairedYichaoDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor | str]:
         item = self.pairs[idx]
-        input_img = self._load_gray(item.input_path)
-        target_img = self._load_gray(item.target_path)
+        input_img = self._load_gray(item.input_path, item.crop_box)
+        target_img = self._load_gray(item.target_path, item.crop_box)
 
         if self.random_flip and random.random() < 0.5:
             input_img = input_img.transpose(Image.FLIP_LEFT_RIGHT)
@@ -185,15 +188,29 @@ class Discriminator(nn.Module):
         return self.model(torch.cat((condition, target), dim=1))
 
 
-def build_pairs(root: Path, input_channel: int, target_channel: int) -> List[PairItem]:
+def build_pairs(
+    root: Path,
+    input_channel: int,
+    target_channel: int,
+    scan_log_interval: int = 1000,
+    scan_label: str = "scan",
+) -> List[PairItem]:
     root = root.resolve()
     grouped: Dict[str, Dict[int, Path]] = {}
+    scanned_files = 0
+    matched_files = 0
     for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in {".jpg", ".jpeg"}:
+        if not path.is_file():
+            continue
+        scanned_files += 1
+        if scan_log_interval > 0 and scanned_files % scan_log_interval == 0:
+            log(f"[{scan_label}] scanned files: {scanned_files} (matched channel files: {matched_files})")
+        if path.suffix.lower() not in {".jpg", ".jpeg"}:
             continue
         match = CHANNEL_PATTERN.match(path.name)
         if not match:
             continue
+        matched_files += 1
 
         base = match.group("base")
         channel = int(match.group("channel"))
@@ -205,7 +222,86 @@ def build_pairs(root: Path, input_channel: int, target_channel: int) -> List[Pai
         channels = grouped[key]
         if input_channel in channels and target_channel in channels:
             pairs.append(PairItem(input_path=channels[input_channel], target_path=channels[target_channel], key=key))
+    log(
+        f"[{scan_label}] done: files={scanned_files}, channel_files={matched_files}, "
+        f"candidate_keys={len(grouped)}, paired={len(pairs)}"
+    )
     return pairs
+
+
+def select_first_pair_per_top_object(pairs: Sequence[PairItem], dataset_label: str) -> List[PairItem]:
+    grouped: Dict[str, List[PairItem]] = {}
+    for item in pairs:
+        top = item.key.split("/", 1)[0]
+        grouped.setdefault(top, []).append(item)
+
+    selected: List[PairItem] = []
+    for top in sorted(grouped.keys()):
+        first = sorted(grouped[top], key=lambda x: x.key)[0]
+        selected.append(first)
+        log(f"[prep:{dataset_label}] selected first pair for object '{top}': {first.key}")
+    log(f"[prep:{dataset_label}] first-pair selection: {len(selected)} / {len(pairs)} pairs")
+    return selected
+
+
+def _crop_boxes_for_image(width: int, height: int, crop_size: int, crops_per_image: int) -> List[Tuple[int, int, int, int]]:
+    if crop_size <= 0:
+        raise ValueError("crop_size must be > 0")
+    if crops_per_image <= 0:
+        raise ValueError("crops_per_image must be > 0")
+
+    if width < crop_size or height < crop_size:
+        return [(0, 0, width, height)]
+
+    # Common case for 1024->4x512 quadrants.
+    if crops_per_image == 4 and width >= crop_size * 2 and height >= crop_size * 2:
+        return [
+            (0, 0, crop_size, crop_size),
+            (width - crop_size, 0, width, crop_size),
+            (0, height - crop_size, crop_size, height),
+            (width - crop_size, height - crop_size, width, height),
+        ]
+
+    grid_cols = max(1, int(math.ceil(math.sqrt(crops_per_image))))
+    grid_rows = max(1, int(math.ceil(crops_per_image / grid_cols)))
+    x_positions = np.linspace(0, max(width - crop_size, 0), num=grid_cols, dtype=int).tolist()
+    y_positions = np.linspace(0, max(height - crop_size, 0), num=grid_rows, dtype=int).tolist()
+
+    boxes: List[Tuple[int, int, int, int]] = []
+    for y in y_positions:
+        for x in x_positions:
+            boxes.append((int(x), int(y), int(x + crop_size), int(y + crop_size)))
+            if len(boxes) >= crops_per_image:
+                return boxes
+    return boxes
+
+
+def expand_pairs_with_crops(
+    pairs: Sequence[PairItem],
+    crop_size: int,
+    crops_per_image: int,
+    dataset_label: str,
+) -> List[PairItem]:
+    expanded: List[PairItem] = []
+    for idx, item in enumerate(pairs, start=1):
+        with Image.open(item.input_path) as probe:
+            width, height = probe.size
+        boxes = _crop_boxes_for_image(width, height, crop_size, crops_per_image)
+        log(
+            f"[prep:{dataset_label}] pair {idx}/{len(pairs)} {item.key} "
+            f"size={width}x{height}, crops={len(boxes)}"
+        )
+        for crop_idx, box in enumerate(boxes, start=1):
+            expanded.append(
+                PairItem(
+                    input_path=item.input_path,
+                    target_path=item.target_path,
+                    key=f"{item.key}|crop{crop_idx}",
+                    crop_box=box,
+                )
+            )
+    log(f"[prep:{dataset_label}] crop expansion: {len(pairs)} -> {len(expanded)} samples")
+    return expanded
 
 
 def split_pairs(pairs: Sequence[PairItem], val_ratio: float, seed: int) -> Tuple[List[PairItem], List[PairItem]]:
@@ -366,10 +462,26 @@ def train(args: argparse.Namespace) -> None:
     log("Scanning image pairs...")
 
     scan_start = time.perf_counter()
-    train_pairs = build_pairs(args.train_root, args.input_channel, args.target_channel)
-    verify_pairs = build_pairs(args.verify_root, args.input_channel, args.target_channel)
+    train_pairs = build_pairs(
+        args.train_root,
+        args.input_channel,
+        args.target_channel,
+        scan_log_interval=args.scan_log_interval,
+        scan_label="scan:train",
+    )
+    verify_pairs = build_pairs(
+        args.verify_root,
+        args.input_channel,
+        args.target_channel,
+        scan_log_interval=args.scan_log_interval,
+        scan_label="scan:verify",
+    )
     val_pairs, test_pairs = split_pairs(verify_pairs, args.verify_val_ratio, args.seed)
     scan_elapsed = time.perf_counter() - scan_start
+    raw_train_pairs = len(train_pairs)
+    raw_verify_pairs = len(verify_pairs)
+    raw_val_pairs = len(val_pairs)
+    raw_test_pairs = len(test_pairs)
 
     if not train_pairs:
         raise RuntimeError(f"No train pairs found in {args.train_root}")
@@ -377,6 +489,45 @@ def train(args: argparse.Namespace) -> None:
         raise RuntimeError(f"No validation pairs found in {args.verify_root}")
     if not test_pairs:
         raise RuntimeError(f"No test pairs found in {args.verify_root}; decrease --verify-val-ratio")
+
+    if args.train_first_pair_per_object:
+        log("[prep:train] enabling first pair per top-level object")
+        train_pairs = select_first_pair_per_top_object(train_pairs, "train")
+
+    if args.train_crops_per_image > 0:
+        log(
+            f"[prep:train] enabling crop expansion: crop_size={args.train_crop_size}, "
+            f"crops_per_image={args.train_crops_per_image}"
+        )
+        train_pairs = expand_pairs_with_crops(
+            train_pairs,
+            crop_size=args.train_crop_size,
+            crops_per_image=args.train_crops_per_image,
+            dataset_label="train",
+        )
+
+    if args.verify_first_pair_per_object:
+        log("[prep:verify] enabling first pair per top-level object (before val/test split)")
+        verify_pairs = select_first_pair_per_top_object(verify_pairs, "verify")
+        val_pairs, test_pairs = split_pairs(verify_pairs, args.verify_val_ratio, args.seed)
+
+    if args.verify_crops_per_image > 0:
+        log(
+            f"[prep:verify] enabling crop expansion: crop_size={args.verify_crop_size}, "
+            f"crops_per_image={args.verify_crops_per_image}"
+        )
+        val_pairs = expand_pairs_with_crops(
+            val_pairs,
+            crop_size=args.verify_crop_size,
+            crops_per_image=args.verify_crops_per_image,
+            dataset_label="verify-val",
+        )
+        test_pairs = expand_pairs_with_crops(
+            test_pairs,
+            crop_size=args.verify_crop_size,
+            crops_per_image=args.verify_crops_per_image,
+            dataset_label="verify-test",
+        )
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = args.results_root / f"pix2pix_yichao_{timestamp}"
@@ -387,15 +538,19 @@ def train(args: argparse.Namespace) -> None:
         folder.mkdir(parents=True, exist_ok=True)
 
     counts = {
-        "train_pairs": len(train_pairs),
-        "verify_pairs": len(verify_pairs),
-        "val_pairs": len(val_pairs),
-        "test_pairs": len(test_pairs),
+        "train_pairs_raw": raw_train_pairs,
+        "verify_pairs_raw": raw_verify_pairs,
+        "val_pairs_raw": raw_val_pairs,
+        "test_pairs_raw": raw_test_pairs,
+        "train_pairs_prepared": len(train_pairs),
+        "verify_pairs_prepared": len(verify_pairs),
+        "val_pairs_prepared": len(val_pairs),
+        "test_pairs_prepared": len(test_pairs),
     }
     log(
         "Pair summary: "
-        f"train={counts['train_pairs']} verify={counts['verify_pairs']} "
-        f"val={counts['val_pairs']} test={counts['test_pairs']} "
+        f"train={counts['train_pairs_prepared']} verify={counts['verify_pairs_prepared']} "
+        f"val={counts['val_pairs_prepared']} test={counts['test_pairs_prepared']} "
         f"(scan {scan_elapsed:.1f}s)"
     )
     log(f"Run directory: {run_dir}")
@@ -660,12 +815,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-channel", type=int, default=0)
     parser.add_argument("--target-channel", type=int, default=1)
+    parser.add_argument("--scan-log-interval", type=int, default=1000)
     parser.add_argument("--verify-val-ratio", type=float, default=0.5)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--lambda-l1", type=float, default=100.0)
     parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument("--train-first-pair-per-object", action="store_true")
+    parser.add_argument("--verify-first-pair-per-object", action="store_true")
+    parser.add_argument("--train-crops-per-image", type=int, default=0)
+    parser.add_argument("--verify-crops-per-image", type=int, default=0)
+    parser.add_argument("--train-crop-size", type=int, default=512)
+    parser.add_argument("--verify-crop-size", type=int, default=512)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--prefetch-factor", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
