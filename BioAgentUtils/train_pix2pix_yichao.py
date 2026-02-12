@@ -19,6 +19,7 @@ import json
 import math
 import random
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
@@ -30,6 +31,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
 CHANNEL_PATTERN = re.compile(r"^(?P<base>.+)_c(?P<channel>\d+)\.(?P<ext>jpe?g)$", re.IGNORECASE)
+
+
+def log(message: str) -> None:
+    print(message, flush=True)
 
 
 @dataclass(frozen=True)
@@ -259,6 +264,9 @@ def evaluate(
     l1_loss: nn.Module,
     max_steps: int | None = None,
     sample_path: Path | None = None,
+    log_interval: int = 20,
+    split_name: str = "eval",
+    verbose: bool = False,
 ) -> Dict[str, float]:
     generator.eval()
     l1_total = 0.0
@@ -266,6 +274,10 @@ def evaluate(
     mse_total = 0.0
     psnr_total = 0.0
     count = 0
+    eval_total_steps = len(dataloader)
+    if max_steps is not None:
+        eval_total_steps = min(eval_total_steps, max_steps)
+    eval_start = time.perf_counter()
 
     with torch.no_grad():
         for step, batch in enumerate(dataloader):
@@ -285,6 +297,21 @@ def evaluate(
 
             if step == 0 and sample_path is not None:
                 save_triplet_grid(inp, pred, tgt, sample_path)
+
+            if verbose:
+                current_step = step + 1
+                should_log = (
+                    current_step == 1
+                    or current_step == eval_total_steps
+                    or (log_interval > 0 and current_step % log_interval == 0)
+                )
+                if should_log:
+                    elapsed = time.perf_counter() - eval_start
+                    eta_sec = (elapsed / current_step) * max(eval_total_steps - current_step, 0)
+                    log(
+                        f"[{split_name}] step {current_step}/{eval_total_steps} "
+                        f"batch_l1={l1:.4f} batch_psnr={m['psnr']:.2f} eta={eta_sec:.1f}s"
+                    )
 
             if max_steps is not None and step + 1 >= max_steps:
                 break
@@ -317,6 +344,7 @@ def save_config(path: Path, args: argparse.Namespace, counts: Dict[str, int]) ->
 
 
 def train(args: argparse.Namespace) -> None:
+    run_start = time.perf_counter()
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -324,10 +352,24 @@ def train(args: argparse.Namespace) -> None:
         torch.cuda.manual_seed_all(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
+    use_amp = bool(args.amp and device.type == "cuda")
+    if device.type == "cuda":
+        torch.backends.cudnn.benchmark = True
 
+    log("== BioAgent Pix2Pix Trainer ==")
+    log(f"Device: {device}")
+    if device.type == "cuda":
+        gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())
+        log(f"GPU: {gpu_name} | AMP: {'on' if use_amp else 'off'}")
+    log(f"Train root:  {args.train_root}")
+    log(f"Verify root: {args.verify_root}")
+    log("Scanning image pairs...")
+
+    scan_start = time.perf_counter()
     train_pairs = build_pairs(args.train_root, args.input_channel, args.target_channel)
     verify_pairs = build_pairs(args.verify_root, args.input_channel, args.target_channel)
     val_pairs, test_pairs = split_pairs(verify_pairs, args.verify_val_ratio, args.seed)
+    scan_elapsed = time.perf_counter() - scan_start
 
     if not train_pairs:
         raise RuntimeError(f"No train pairs found in {args.train_root}")
@@ -350,15 +392,39 @@ def train(args: argparse.Namespace) -> None:
         "val_pairs": len(val_pairs),
         "test_pairs": len(test_pairs),
     }
+    log(
+        "Pair summary: "
+        f"train={counts['train_pairs']} verify={counts['verify_pairs']} "
+        f"val={counts['val_pairs']} test={counts['test_pairs']} "
+        f"(scan {scan_elapsed:.1f}s)"
+    )
+    log(f"Run directory: {run_dir}")
     save_config(run_dir / "config.json", args, counts)
 
     train_ds = PairedYichaoDataset(train_pairs, args.image_size, random_flip=True)
     val_ds = PairedYichaoDataset(val_pairs, args.image_size, random_flip=False)
     test_ds = PairedYichaoDataset(test_pairs, args.image_size, random_flip=False)
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
-    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+    common_loader_kwargs: Dict[str, int | bool] = {"batch_size": args.batch_size, "num_workers": args.num_workers}
+    if device.type == "cuda":
+        common_loader_kwargs["pin_memory"] = True
+    if args.num_workers > 0:
+        common_loader_kwargs["persistent_workers"] = True
+        common_loader_kwargs["prefetch_factor"] = args.prefetch_factor
+
+    train_loader = DataLoader(train_ds, shuffle=True, **common_loader_kwargs)
+    val_loader = DataLoader(val_ds, shuffle=False, **common_loader_kwargs)
+    test_loader = DataLoader(test_ds, shuffle=False, **common_loader_kwargs)
+    train_total_steps = len(train_loader)
+    if args.max_train_steps is not None:
+        train_total_steps = min(train_total_steps, args.max_train_steps)
+    val_total_steps = len(val_loader) if args.max_eval_steps is None else min(len(val_loader), args.max_eval_steps)
+    test_total_steps = len(test_loader) if args.max_eval_steps is None else min(len(test_loader), args.max_eval_steps)
+    log(
+        "Dataloader summary: "
+        f"train_steps={train_total_steps} val_steps={val_total_steps} test_steps={test_total_steps} "
+        f"batch_size={args.batch_size} workers={args.num_workers}"
+    )
 
     generator = GeneratorUNet().to(device)
     discriminator = Discriminator().to(device)
@@ -368,10 +434,12 @@ def train(args: argparse.Namespace) -> None:
 
     optimizer_g = torch.optim.Adam(generator.parameters(), lr=args.lr, betas=(0.5, 0.999))
     optimizer_d = torch.optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999))
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     with torch.no_grad():
         probe = torch.zeros((1, 1, args.image_size, args.image_size), device=device)
         patch_shape = discriminator(probe, probe).shape[1:]
+    log(f"PatchGAN output shape: {patch_shape}")
 
     metrics_csv = run_dir / "metrics.csv"
     with metrics_csv.open("w", newline="", encoding="utf-8") as fh:
@@ -392,11 +460,13 @@ def train(args: argparse.Namespace) -> None:
     for epoch in range(1, args.epochs + 1):
         generator.train()
         discriminator.train()
+        epoch_start = time.perf_counter()
 
         g_loss_total = 0.0
         d_loss_total = 0.0
         l1_total = 0.0
         seen = 0
+        log(f"[train] epoch {epoch}/{args.epochs} starting ({train_total_steps} steps)")
 
         for step, batch in enumerate(train_loader):
             inp = batch["input"].to(device)
@@ -407,27 +477,47 @@ def train(args: argparse.Namespace) -> None:
             fake = torch.zeros((batch_size, *patch_shape), device=device)
 
             optimizer_g.zero_grad(set_to_none=True)
-            fake_tgt = generator(inp)
-            pred_fake = discriminator(inp, fake_tgt)
-            g_gan = criterion_gan(pred_fake, valid)
-            g_l1 = criterion_l1(fake_tgt, tgt)
-            g_loss = g_gan + args.lambda_l1 * g_l1
-            g_loss.backward()
-            optimizer_g.step()
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                fake_tgt = generator(inp)
+                pred_fake = discriminator(inp, fake_tgt)
+                g_gan = criterion_gan(pred_fake, valid)
+                g_l1 = criterion_l1(fake_tgt, tgt)
+                g_loss = g_gan + args.lambda_l1 * g_l1
+            scaler.scale(g_loss).backward()
+            scaler.step(optimizer_g)
 
             optimizer_d.zero_grad(set_to_none=True)
-            pred_real = discriminator(inp, tgt)
-            d_real = criterion_gan(pred_real, valid)
-            pred_fake_detached = discriminator(inp, fake_tgt.detach())
-            d_fake = criterion_gan(pred_fake_detached, fake)
-            d_loss = 0.5 * (d_real + d_fake)
-            d_loss.backward()
-            optimizer_d.step()
+            with torch.cuda.amp.autocast(enabled=use_amp):
+                pred_real = discriminator(inp, tgt)
+                d_real = criterion_gan(pred_real, valid)
+                pred_fake_detached = discriminator(inp, fake_tgt.detach())
+                d_fake = criterion_gan(pred_fake_detached, fake)
+                d_loss = 0.5 * (d_real + d_fake)
+            scaler.scale(d_loss).backward()
+            scaler.step(optimizer_d)
+            scaler.update()
 
             g_loss_total += g_loss.item() * batch_size
             d_loss_total += d_loss.item() * batch_size
             l1_total += g_l1.item() * batch_size
             seen += batch_size
+
+            current_step = step + 1
+            should_log = (
+                current_step == 1
+                or current_step == train_total_steps
+                or (args.log_interval > 0 and current_step % args.log_interval == 0)
+            )
+            if should_log:
+                elapsed = time.perf_counter() - epoch_start
+                avg_step_sec = elapsed / current_step
+                eta_sec = avg_step_sec * max(train_total_steps - current_step, 0)
+                samples_sec = seen / max(elapsed, 1e-6)
+                log(
+                    f"[train] epoch {epoch}/{args.epochs} step {current_step}/{train_total_steps} "
+                    f"g={g_loss.item():.4f} d={d_loss.item():.4f} l1={g_l1.item():.4f} "
+                    f"{samples_sec:.2f} samples/s eta={eta_sec:.1f}s"
+                )
 
             if args.max_train_steps is not None and step + 1 >= args.max_train_steps:
                 break
@@ -445,6 +535,9 @@ def train(args: argparse.Namespace) -> None:
             criterion_l1,
             max_steps=args.max_eval_steps,
             sample_path=samples_dir / f"epoch_{epoch:03d}.png",
+            log_interval=args.log_interval,
+            split_name="val",
+            verbose=args.verbose_eval,
         )
 
         with metrics_csv.open("a", newline="", encoding="utf-8") as fh:
@@ -461,7 +554,7 @@ def train(args: argparse.Namespace) -> None:
                 ]
             )
 
-        print(
+        log(
             f"Epoch {epoch:03d}/{args.epochs} "
             f"G={train_metrics['g_loss']:.4f} D={train_metrics['d_loss']:.4f} "
             f"train_l1={train_metrics['l1']:.4f} "
@@ -486,7 +579,7 @@ def train(args: argparse.Namespace) -> None:
             torch.save(generator.state_dict(), checkpoints_dir / "best_generator.pt")
             torch.save(discriminator.state_dict(), checkpoints_dir / "best_discriminator.pt")
 
-    print("Running final test evaluation using best generator...")
+    log("Running final test evaluation using best generator...")
     best_generator = GeneratorUNet().to(device)
     best_generator.load_state_dict(torch.load(checkpoints_dir / "best_generator.pt", map_location=device))
 
@@ -497,6 +590,9 @@ def train(args: argparse.Namespace) -> None:
         criterion_l1,
         max_steps=args.max_eval_steps,
         sample_path=run_dir / "test_preview.png",
+        log_interval=args.log_interval,
+        split_name="test",
+        verbose=args.verbose_eval,
     )
 
     exported = 0
@@ -535,9 +631,11 @@ def train(args: argparse.Namespace) -> None:
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-    print("Training complete.")
-    print(f"Results: {run_dir}")
-    print(f"Test L1: {test_metrics['l1']:.6f}, PSNR: {test_metrics['psnr']:.3f}")
+    total_elapsed = time.perf_counter() - run_start
+    log("Training complete.")
+    log(f"Results: {run_dir}")
+    log(f"Test L1: {test_metrics['l1']:.6f}, PSNR: {test_metrics['psnr']:.3f}")
+    log(f"Total time: {total_elapsed:.1f}s")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -569,11 +667,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lambda-l1", type=float, default=100.0)
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--prefetch-factor", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--log-interval", type=int, default=20)
+    parser.add_argument("--verbose-eval", action="store_true")
+    parser.add_argument("--amp", dest="amp", action="store_true")
+    parser.add_argument("--no-amp", dest="amp", action="store_false")
     parser.add_argument("--test-save-limit", type=int, default=200)
     parser.add_argument("--max-train-steps", type=int, default=None)
     parser.add_argument("--max-eval-steps", type=int, default=None)
     parser.add_argument("--cpu", action="store_true")
+    parser.set_defaults(amp=True)
     return parser
 
 

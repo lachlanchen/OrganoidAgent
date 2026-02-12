@@ -61,10 +61,25 @@ Run full training:
 ./BioAgentUtils/run_train_pix2pix_yichao.sh
 ```
 
+Live logs now include:
+- startup config (device, pair counts, loader steps)
+- per-step progress with ETA and samples/sec
+- epoch and validation summaries
+
+Useful flags:
+- `--log-interval 10` print every 10 train/eval steps
+- `--amp` / `--no-amp` enable/disable mixed precision on CUDA
+- `--num-workers 4 --prefetch-factor 2` dataloader throughput tuning
+
 Quick smoke run:
 
 ```bash
 ./BioAgentUtils/run_train_pix2pix_yichao.sh \
   --epochs 1 --batch-size 2 --num-workers 0 \
-  --max-train-steps 2 --max-eval-steps 1 --test-save-limit 2
+  --max-train-steps 2 --max-eval-steps 1 --test-save-limit 2 \
+  --log-interval 1
 ```
+
+Notes:
+- `--epochs 1` still runs all train pairs unless you set `--max-train-steps`.
+- If another training process is already running, throughput can drop heavily.
