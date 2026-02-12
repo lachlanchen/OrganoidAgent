@@ -30,3 +30,18 @@ Optional flags:
 - `--first-plane-only` export only `t=0, z=0` (legacy single-plane mode).
 - `--overwrite` replace existing JPEGs.
 - `--quality 95` set JPEG quality.
+
+## Organize JPEG by Object
+
+`organize_lif_jpegs.py` groups flat JPEG exports into one folder per object/series.
+
+Example:
+
+```bash
+python BioAgentUtils/organize_lif_jpegs.py \
+  "Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all" \
+  --output-dir "Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"
+```
+
+By default it uses hardlinks (`--mode link`) to avoid duplicating large files.
+Use `--mode copy` or `--mode move` if needed.
