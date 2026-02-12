@@ -40,6 +40,9 @@ def export_lif_to_jpeg(
     quality: int,
     image_indices: List[int] | None,
     channels: List[int] | None,
+    z_indices: List[int] | None,
+    time_indices: List[int] | None,
+    first_plane_only: bool,
     overwrite: bool,
 ) -> tuple[int, int]:
     lif = LifFile(str(input_path))
@@ -54,16 +57,33 @@ def export_lif_to_jpeg(
         image_name = sanitize_name(getattr(lif_image, "name", f"image_{image_index}"))
 
         selected_channels = parse_indices(channels, lif_image.channels, "Channel")
-        for channel_index in selected_channels:
-            out_name = f"{image_index:02d}_{image_name}_c{channel_index}.jpg"
-            out_path = output_dir / out_name
-            if out_path.exists() and not overwrite:
-                total_skipped += 1
-                continue
+        if first_plane_only:
+            selected_z = [0]
+            selected_t = [0]
+        else:
+            selected_z = parse_indices(z_indices, lif_image.nz, "Z")
+            selected_t = parse_indices(time_indices, lif_image.nt, "Time")
 
-            plane = lif_image.get_plane(c=channel_index)
-            plane.save(out_path, format="JPEG", quality=quality)
-            total_saved += 1
+        for time_index in selected_t:
+            for z_index in selected_z:
+                for channel_index in selected_channels:
+                    out_name = (
+                        f"{image_index:02d}_{image_name}_"
+                        f"t{time_index:03d}_z{z_index:03d}_c{channel_index}.jpg"
+                    )
+                    out_path = output_dir / out_name
+                    if out_path.exists() and not overwrite:
+                        total_skipped += 1
+                        continue
+
+                    requested_dims = {}
+                    if lif_image.nz > 1 or z_index != 0:
+                        requested_dims[3] = z_index
+                    if lif_image.nt > 1 or time_index != 0:
+                        requested_dims[4] = time_index
+                    plane = lif_image.get_plane(c=channel_index, requested_dims=requested_dims)
+                    plane.save(out_path, format="JPEG", quality=quality)
+                    total_saved += 1
 
     return total_saved, total_skipped
 
@@ -92,6 +112,25 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         default=None,
         help="Optional channel indices to export (default: all channels)",
+    )
+    parser.add_argument(
+        "--z-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional Z-plane indices to export (default: all planes)",
+    )
+    parser.add_argument(
+        "--time-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional time indices to export (default: all time points)",
+    )
+    parser.add_argument(
+        "--first-plane-only",
+        action="store_true",
+        help="Export only t=0, z=0 per image/channel (legacy behavior)",
     )
     parser.add_argument(
         "--overwrite",
@@ -127,6 +166,9 @@ def main() -> int:
             quality=args.quality,
             image_indices=args.image_indices,
             channels=args.channels,
+            z_indices=args.z_indices,
+            time_indices=args.time_indices,
+            first_plane_only=args.first_plane_only,
             overwrite=args.overwrite,
         )
     except ValueError as exc:
