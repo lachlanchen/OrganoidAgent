@@ -18,3 +18,7 @@ research_idea/*.out
 research_idea/*.pdf
 research_idea/*.snm
 research_idea/*.toc
+
+# Local data and environments
+Yichao-data-1/
+.venv_lif/
