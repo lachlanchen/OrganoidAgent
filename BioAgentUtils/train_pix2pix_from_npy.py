@@ -277,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--lambda-l1", type=float, default=100.0)
     p.add_argument("--val-ratio", type=float, default=0.2)
-    p.add_argument("--num-workers", type=int, default=2)
+    p.add_argument("--num-workers", "--workers", dest="num_workers", type=int, default=0)
     p.add_argument("--prefetch-factor", type=int, default=2)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--log-interval", type=int, default=10)

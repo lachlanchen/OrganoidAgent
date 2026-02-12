@@ -7,7 +7,7 @@ TRAIN_SCRIPT="$ROOT_DIR/BioAgentUtils/train_pix2pix_from_npy.py"
 DATA_DIR="$ROOT_DIR/results/yichao_paired_npy"
 RESULTS_ROOT="$ROOT_DIR/results"
 GPU_INDEX="${GPU_INDEX:-0}"
-KILL_STALE="${KILL_STALE:-1}"
+KILL_STALE="${KILL_STALE:-0}"
 
 echo "[run_train] project root: $ROOT_DIR"
 echo "[run_train] data dir:     $DATA_DIR"
@@ -24,10 +24,10 @@ nvidia-smi -L
 
 if [[ "$KILL_STALE" == "1" ]]; then
   echo "[run_train] killing stale pix2pix python processes (if any)..."
-  pgrep -fa "train_pix2pix_yichao.py|train_pix2pix_from_npy.py|python -X importtime" || true
-  pkill -9 -f "train_pix2pix_yichao.py" || true
-  pkill -9 -f "train_pix2pix_from_npy.py" || true
-  pkill -9 -f "python -X importtime" || true
+  timeout 5s pgrep -fa "train_pix2pix_yichao.py|train_pix2pix_from_npy.py|python -X importtime" || true
+  timeout 5s pkill -9 -f "train_pix2pix_yichao.py" || true
+  timeout 5s pkill -9 -f "train_pix2pix_from_npy.py" || true
+  timeout 5s pkill -9 -f "python -X importtime" || true
 fi
 
 if [[ "${CONDA_DEFAULT_ENV:-}" == "organoid" ]]; then
@@ -43,6 +43,10 @@ else
   fi
 fi
 
+export PYTHONNOUSERSITE=1
+echo "[run_train] PYTHONNOUSERSITE=$PYTHONNOUSERSITE"
+echo "[run_train] python: $(command -v python)"
+
 echo "[run_train] preparing .npy pairs..."
 PYTHONUNBUFFERED=1 "$PREP_SCRIPT"
 
@@ -50,10 +54,11 @@ echo "[run_train] starting GPU training..."
 export CUDA_VISIBLE_DEVICES="$GPU_INDEX"
 
 echo "[run_train] preflight: checking torch+cuda import..."
-if ! python -u - <<'PY'
+if ! timeout 45s python -u - <<'PY'
 print("[preflight] importing torch...", flush=True)
 import torch
 print(f"[preflight] torch={torch.__version__}", flush=True)
+print(f"[preflight] torch_path={torch.__file__}", flush=True)
 print(f"[preflight] cuda_available={torch.cuda.is_available()}", flush=True)
 if not torch.cuda.is_available():
     raise SystemExit("CUDA unavailable")
