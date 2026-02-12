@@ -10,9 +10,7 @@ fi
 EXTRA_ARGS=("$@")
 
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "[tmux-start] session '$SESSION_NAME' already exists"
-  echo "[tmux-start] attach: tmux attach -t $SESSION_NAME"
-  exit 0
+  tmux kill-session -t "$SESSION_NAME"
 fi
 
 tmux new-session -d -s "$SESSION_NAME" -n train

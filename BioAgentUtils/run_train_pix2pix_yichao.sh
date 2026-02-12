@@ -2,65 +2,72 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT_PATH="$ROOT_DIR/BioAgentUtils/train_pix2pix_yichao.py"
-TRAIN_ROOT="$ROOT_DIR/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"
-VERIFY_ROOT="$ROOT_DIR/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object"
+PREP_SCRIPT="$ROOT_DIR/BioAgentUtils/run_prepare_yichao_pairs_to_npy.sh"
+TRAIN_SCRIPT="$ROOT_DIR/BioAgentUtils/train_pix2pix_from_npy.py"
+DATA_DIR="$ROOT_DIR/results/yichao_paired_npy"
 RESULTS_ROOT="$ROOT_DIR/results"
+GPU_INDEX="${GPU_INDEX:-0}"
+KILL_STALE="${KILL_STALE:-1}"
 
 echo "[run_train] project root: $ROOT_DIR"
-echo "[run_train] train root:   $TRAIN_ROOT"
-echo "[run_train] verify root:  $VERIFY_ROOT"
+echo "[run_train] data dir:     $DATA_DIR"
 echo "[run_train] results root: $RESULTS_ROOT"
+echo "[run_train] gpu index:    $GPU_INDEX"
 echo "[run_train] args:         $*"
+echo "[run_train] kill stale:   $KILL_STALE"
 
-RUNNING_PIDS="$(pgrep -fa "train_pix2pix_yichao.py" || true)"
-if [[ -n "$RUNNING_PIDS" ]]; then
-  echo "[run_train] warning: existing training processes detected:"
-  echo "$RUNNING_PIDS"
-  echo "[run_train] this can make new runs look slow. stop old runs if needed:"
-  echo "[run_train]   pkill -f train_pix2pix_yichao.py"
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+  echo "[run_train] ERROR: nvidia-smi not found. GPU is required."
+  exit 1
 fi
+nvidia-smi -L
 
-DEFAULT_PREP_ARGS=(
-  --image-size 512
-  --scan-log-interval 200
-  --train-first-pair-per-object
-  --train-crops-per-image 4
-  --train-crop-size 512
-)
+if [[ "$KILL_STALE" == "1" ]]; then
+  echo "[run_train] killing stale pix2pix python processes (if any)..."
+  pgrep -fa "train_pix2pix_yichao.py|train_pix2pix_from_npy.py|python -X importtime" || true
+  pkill -9 -f "train_pix2pix_yichao.py" || true
+  pkill -9 -f "train_pix2pix_from_npy.py" || true
+  pkill -9 -f "python -X importtime" || true
+fi
 
 if [[ "${CONDA_DEFAULT_ENV:-}" == "organoid" ]]; then
   echo "[run_train] using active env: organoid"
-  PYTHONUNBUFFERED=1 \
-    python -u "$SCRIPT_PATH" \
-    --train-root "$TRAIN_ROOT" \
-    --verify-root "$VERIFY_ROOT" \
-    --results-root "$RESULTS_ROOT" \
-    "${DEFAULT_PREP_ARGS[@]}" \
-    "$@"
 else
-  echo "[run_train] active env is not 'organoid'; attempting inline activate"
   if [[ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]]; then
-    # Prefer inline activation over `conda run` so logs stream directly.
     # shellcheck disable=SC1091
     source "$HOME/miniconda3/etc/profile.d/conda.sh"
     conda activate organoid
-    PYTHONUNBUFFERED=1 \
-      python -u "$SCRIPT_PATH" \
-      --train-root "$TRAIN_ROOT" \
-      --verify-root "$VERIFY_ROOT" \
-      --results-root "$RESULTS_ROOT" \
-      "${DEFAULT_PREP_ARGS[@]}" \
-      "$@"
   else
-    echo "[run_train] conda.sh not found; falling back to conda run"
-    PYTHONUNBUFFERED=1 \
-      conda run --no-capture-output -n organoid \
-      python -u "$SCRIPT_PATH" \
-      --train-root "$TRAIN_ROOT" \
-      --verify-root "$VERIFY_ROOT" \
-      --results-root "$RESULTS_ROOT" \
-      "${DEFAULT_PREP_ARGS[@]}" \
-      "$@"
+    echo "[run_train] ERROR: cannot activate conda env 'organoid'."
+    exit 1
   fi
 fi
+
+echo "[run_train] preparing .npy pairs..."
+PYTHONUNBUFFERED=1 "$PREP_SCRIPT"
+
+echo "[run_train] starting GPU training..."
+export CUDA_VISIBLE_DEVICES="$GPU_INDEX"
+
+echo "[run_train] preflight: checking torch+cuda import..."
+if ! python -u - <<'PY'
+print("[preflight] importing torch...", flush=True)
+import torch
+print(f"[preflight] torch={torch.__version__}", flush=True)
+print(f"[preflight] cuda_available={torch.cuda.is_available()}", flush=True)
+if not torch.cuda.is_available():
+    raise SystemExit("CUDA unavailable")
+print(f"[preflight] cuda_device_count={torch.cuda.device_count()}", flush=True)
+print(f"[preflight] current_device_name={torch.cuda.get_device_name(0)}", flush=True)
+PY
+then
+  echo "[run_train] ERROR: torch/cuda preflight failed."
+  echo "[run_train] Hint: if it hangs at 'importing torch', clean stuck GPU python processes first."
+  exit 1
+fi
+
+PYTHONUNBUFFERED=1 python -u "$TRAIN_SCRIPT" \
+  --data-dir "$DATA_DIR" \
+  --results-root "$RESULTS_ROOT" \
+  --gpu-index 0 \
+  "$@"

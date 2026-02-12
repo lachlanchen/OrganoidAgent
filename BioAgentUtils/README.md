@@ -55,7 +55,7 @@ Defaults:
 - Verification set: `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object` (split into val/test)
 - Output root: `results/`
 
-Run full training:
+Run full training (GPU-only):
 
 ```bash
 ./BioAgentUtils/run_train_pix2pix_yichao.sh
@@ -82,23 +82,25 @@ Live logs now include:
 
 Useful flags:
 - `--log-interval 10` print every 10 train/eval steps
-- `--amp` / `--no-amp` enable/disable mixed precision on CUDA
-- `--num-workers 4 --prefetch-factor 2` dataloader throughput tuning
-- `--train-crops-per-image 0` disable crop expansion
-- `--train-first-pair-per-object` / `--verify-first-pair-per-object`
+- `--epochs 20 --batch-size 4`
+- `GPU_INDEX=0` (default; uses first GPU)
+- `KILL_STALE=1` kill stale pix2pix python processes before training
 
 Quick smoke run:
 
 ```bash
 ./BioAgentUtils/run_train_pix2pix_yichao.sh \
-  --epochs 1 --batch-size 2 --num-workers 0 \
-  --max-train-steps 2 --max-eval-steps 1 --test-save-limit 2 \
-  --log-interval 1
+  --epochs 1 --batch-size 2 \
+  --max-train-steps 2 --max-eval-steps 1 --log-interval 1
 ```
 
 Notes:
-- `--epochs 1` still runs all train pairs unless you set `--max-train-steps`.
-- If another training process is already running, throughput can drop heavily.
+- Script runs a torch/CUDA preflight check and prints stage logs before training.
+- If it hangs at `[preflight] importing torch...`, clear stale GPU python jobs, e.g.:
+  - `./BioAgentUtils/clear_gpu_python_processes.sh 0`
+- Test evaluation triplet plots are saved under:
+  - `results/pix2pix_npy_*/plots/test_triplets_epoch_XXX.png`
+  - `results/pix2pix_npy_*/plots/test_triplets_best.png`
 
 ## Prepare Paired NPY (Yichao)
 
