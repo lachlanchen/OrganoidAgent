@@ -61,6 +61,13 @@ Run full training:
 ./BioAgentUtils/run_train_pix2pix_yichao.sh
 ```
 
+Start in a tmux session (interactive; Ctrl+C works normally):
+
+```bash
+./BioAgentUtils/start_train_pix2pix_tmux.sh pix2pix-train --log-interval 10
+tmux attach -t pix2pix-train
+```
+
 Live logs now include:
 - startup config (device, pair counts, loader steps)
 - per-step progress with ETA and samples/sec
