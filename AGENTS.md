@@ -39,7 +39,7 @@
 ## Commit & Pull Request Guidelines
 - Use short, imperative commit messages (e.g., “Add preview for TIFF”).
 - Keep commits scoped to one logical change.
-- Always commit and push changes; do not leave local-only updates.
+- After any agent edit, immediately run `git add`, `git commit`, and `git push` unless the user explicitly says not to.
 - PRs should include a brief summary, the main commands run, and screenshots for UI changes.
 
 ## Security & Configuration Tips
