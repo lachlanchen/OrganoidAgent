@@ -22,3 +22,9 @@ research_idea/*.toc
 # Local data and environments
 Yichao-data-1/
 .venv_lif/
+# Local experiment/data artifacts
+._.DS_Store
+Data-Yichao-1/
+Data-Yichao-2/
+pixel2pixel_fluorescent/
+results/
