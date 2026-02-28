@@ -1,20 +1,28 @@
 [English](../README.md) · [العربية](README.ar.md) · [Español](README.es.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [中文 (简体)](README.zh-Hans.md) · [中文（繁體）](README.zh-Hant.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/lachlanchen/lachlanchen/main/figs/banner.png" alt="Bannière LazyingArt" />
-</p>
+
+[![LazyingArt banner](https://github.com/lachlanchen/lachlanchen/raw/main/figs/banner.png)](https://github.com/lachlanchen/lachlanchen/blob/main/figs/banner.png)
 
 # OrganoidAgent
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Backend](https://img.shields.io/badge/Backend-Tornado-2c7fb8)
 ![Frontend](https://img.shields.io/badge/Frontend-PWA-0a9396)
+![Data](https://img.shields.io/badge/Data-Local%20First-4c956c)
+![Format](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 ![Status](https://img.shields.io/badge/Status-Active-success)
-![Data](https://img.shields.io/badge/Data-Local%20first-4c956c)
-![Preview](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 
-OrganoidAgent est un backend Tornado léger avec une interface frontend Progressive Web App (PWA) pour parcourir et prévisualiser localement des jeux de données d’organoïdes. Il prend en charge des aperçus pratiques, adaptés au type de fichier, pour les tableaux, les images de microscopie (y compris TIFF), les archives, les fichiers texte gzip et les objets d’analyse AnnData `.h5ad`.
+OrganoidAgent est un backend Tornado léger et une Progressive Web App (PWA) pour parcourir et prévisualiser localement des jeux de données d’organoïdes avec une configuration minimale. Il propose un rendu de prévisualisation selon le type de fichier pour les tableaux, les images de microscopie (y compris TIFF), les archives, les fichiers texte gzip et les objets d’analyse AnnData `.h5ad`.
+
+## 🎯 En bref
+
+| Objectif | Ce que ce dépôt vous apporte |
+|---|---|
+| Exploration locale d’abord | Découverte de jeux de données, métadonnées et navigation des fichiers depuis un espace de travail local `datasets/` |
+| Prévisualisations riches | Parcours de tableaux, images, archives, `.gz` et `.h5ad` via des chemins de prévisualisation dédiés |
+| Frontend orienté hors ligne | Shell PWA installable avec service worker et manifeste |
+| Opérations pratiques | Extraction d’archives + indexation par filtres de catégorie |
 
 ## Vue d’ensemble 🔭
 
@@ -22,35 +30,35 @@ L’application principale est conçue pour l’exploration interactive de jeux 
 
 - API backend et moteur de prévisualisation dans `app.py`
 - Frontend PWA dans `web/`
-- Scripts de téléchargement dans `scripts/`
-- Espace de travail local des données dans `datasets/` (ignoré par git)
+- Helpers de téléchargement dans `scripts/`
+- Espace de travail local des jeux de données dans `datasets/` (ignoré par git)
 
-Ce dépôt contient aussi des espaces de travail de recherche et d’utilitaires adjacents (`BioAgent`, `BioAgentUtils`, `references`, `results`, `vendor`, sous-module `papers`). Le runtime principal décrit dans ce README est l’application `OrganoidAgent` à la racine.
+Ce dépôt contient également des espaces de travail de recherche et d’utilitaires associés (`BioAgent`, `BioAgentUtils`, `references`, `results`, `vendor`, sous-module `papers`). L’exécution principale décrite dans ce README correspond à l’application `OrganoidAgent` au niveau racine.
 
 ## Fonctionnalités ✨
 
 - Indexation locale des jeux de données avec résumés de taille et de nombre de fichiers
-- Listing récursif des fichiers de jeux de données avec type de fichier inféré
-- Prise en charge des aperçus CSV/TSV/XLS/XLSX
-- Prise en charge des aperçus d’images TIFF/JPG/PNG
-- Prise en charge des résumés `.h5ad` avec génération d’aperçus de nuages de points embedding/PCA
-- Prise en charge du listing d’archives ZIP/TAR/TGZ + tentative d’aperçu de la première image
-- Prise en charge de l’aperçu des premières lignes des fichiers texte `.gz`
-- Endpoint d’extraction d’archives pour les jeux de données volumineux empaquetés
-- Cartes de métadonnées au niveau jeu de données rendues à partir de Markdown
+- Liste récursive des fichiers de jeu de données avec détection du type de fichier
+- Prévisualisation des tableaux CSV/TSV/XLS/XLSX
+- Prévisualisation d’images TIFF/JPG/PNG
+- Prévisualisation des résumés `.h5ad` avec génération d’un scatter plot d’embeddings/PCA
+- Prévisualisation des archives ZIP/TAR/TGZ avec tentative d’affichage de la première image
+- Prévisualisation des premières lignes de texte `.gz`
+- Endpoint d’extraction d’archives pour les grands jeux de données empaquetés
+- Cartes de métadonnées au niveau du jeu de données rendues depuis Markdown
 - Frontend PWA avec service worker et manifeste
-- Assainissement de chemin de base (`safe_dataset_path`) pour confiner l’accès aux fichiers sous `datasets/`
+- Assainissement de chemin de base (`safe_dataset_path`) pour restreindre l’accès aux fichiers sous `datasets/`
 
 ### En un coup d’œil
 
-| Zone | Ce que cela fournit |
+| Domaine | Ce qu’il fournit |
 |---|---|
-| Découverte des jeux de données | Listing des jeux de données au niveau répertoire avec nombre de fichiers et résumés de taille |
-| Exploration de fichiers | Listing récursif et inférence de type (`image`, `table`, `analysis`, `archive`, etc.) |
-| Aperçus enrichis | Tableaux, TIFF/images, extraits texte gzip, contenu d’archives, résumés AnnData |
-| Visualisations d’analyse | Aperçus de nuages de points `.h5ad` depuis des embeddings `obsm` ou repli PCA |
-| Prise en charge des paquets | Listing d’archives + endpoint d’extraction pour les gros bundles compressés |
-| Expérience web | PWA installable avec ressources service worker compatibles hors ligne |
+| Découverte de jeu de données | Liste des jeux de données au niveau dossier avec nombre de fichiers et résumés de taille |
+| Exploration de fichiers | Liste récursive et détection du type (`image`, `table`, `analysis`, `archive`, etc.) |
+| Prévisualisations riches | Tableaux, images TIFF, extraits texte gzip, contenu d’archives, résumés AnnData |
+| Visualisations d’analyse | Prévisualisations de scatter `.h5ad` depuis les embeddings `obsm` ou fallback PCA |
+| Support de packaging | Listing d’archives + endpoint d’extraction pour les bundles compressés volumineux |
+| Expérience Web | PWA installable avec assets de service worker adaptés au hors-ligne |
 
 ## Structure du projet 🗂️
 
@@ -89,15 +97,15 @@ Packages Python requis/optionnels déduits du code source :
 
 | Package | Rôle |
 |---|---|
-| `tornado` | Requis pour démarrer le serveur |
-| `pandas` | Optionnel : prise en charge des aperçus de tableaux |
-| `anndata`, `numpy` | Optionnel : aperçu `.h5ad` et tracés d’analyse |
-| `Pillow` | Optionnel : rendu d’images et génération d’aperçus |
-| `tifffile` | Optionnel : prise en charge des aperçus TIFF |
-| `requests` | Optionnel : scripts de téléchargement de données |
-| `kaggle` | Optionnel : téléchargements Kaggle dans le script drug-screening |
+| `tornado` | Requis pour le démarrage du serveur |
+| `pandas` | Optionnel : support de prévisualisation des tableaux |
+| `anndata`, `numpy` | Optionnel : prévisualisation `.h5ad` et tracés d’analyse |
+| `Pillow` | Optionnel : rendu d’image et génération de prévisualisations |
+| `tifffile` | Optionnel : support de prévisualisation TIFF |
+| `requests` | Optionnel : scripts de téléchargement de jeux de données |
+| `kaggle` | Optionnel : téléchargements Kaggle dans le script de drug screening |
 
-Note d’hypothèse : il n’existe actuellement ni `requirements.txt`, ni `pyproject.toml`, ni `environment.yml` à la racine pour l’application principale.
+Remarque sur les hypothèses : aucun `requirements.txt`, `pyproject.toml` ou `environment.yml` n’existe actuellement pour l’app de niveau racine.
 
 ## Installation ⚙️
 
@@ -142,18 +150,18 @@ Les données téléchargées sont stockées dans `datasets/` (ignoré par git).
 
 ## Endpoints API 🌐
 
-| Method | Endpoint | Purpose |
+| Méthode | Endpoint | Objectif |
 |---|---|---|
-| `GET` | `/api/datasets` | List datasets with summary stats |
-| `GET` | `/api/datasets/{name}` | List files for one dataset |
-| `GET` | `/api/datasets/{name}/metadata` | Return markdown metadata card |
-| `GET` | `/api/category/{datasets|segmentation|features|analysis}` | Category-oriented file listing |
-| `GET` | `/api/preview?path=<relative_path_under_datasets>` | File-type-aware preview payload |
-| `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | Extract archive into sibling `_extracted` folder |
-| `GET` | `/files/<path>` | Raw dataset file serving |
-| `GET` | `/previews/<path>` | Generated preview asset serving |
+| `GET` | `/api/datasets` | Lister les jeux de données avec statistiques de résumé |
+| `GET` | `/api/datasets/{name}` | Lister les fichiers d’un jeu de données |
+| `GET` | `/api/datasets/{name}/metadata` | Retourner la carte de métadonnées Markdown |
+| `GET` | `/api/category/{datasets|segmentation|features|analysis}` | Liste de fichiers orientée catégorie |
+| `GET` | `/api/preview?path=<relative_path_under_datasets>` | Charge utile de prévisualisation adaptée au type de fichier |
+| `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | Extraire l’archive dans un dossier `_extracted` frère |
+| `GET` | `/files/<path>` | Servir le fichier dataset brut |
+| `GET` | `/previews/<path>` | Servir les assets de prévisualisation générés |
 
-Exemple d’appel d’aperçu :
+Exemple d’appel de prévisualisation :
 
 ```bash
 curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
@@ -161,15 +169,15 @@ curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
 
 ## Configuration 🧩
 
-La configuration runtime actuelle est volontairement minimale :
+La configuration runtime actuelle est volontairement réduite :
 
-- Port serveur : argument `--port` dans `app.py` (par défaut `8080`)
-- Répertoire de données : fixé à `datasets/` relatif à la racine du dépôt
-- Cache d’aperçus : `datasets/.cache/previews`
-- Mapping de métadonnées : dictionnaire `DATASET_METADATA` dans `app.py`
-- Jeton API GitHub pour le downloader (optionnel) : variable d’environnement `GITHUB_TOKEN` ou `--github-token`
+- Port serveur : argument `--port` dans `app.py` (valeur par défaut `8080`)
+- Répertoire de données : fixe sur `datasets/` depuis la racine du dépôt
+- Cache de prévisualisation : `datasets/.cache/previews`
+- Mapping des métadonnées : dictionnaire `DATASET_METADATA` dans `app.py`
+- Jeton GitHub API pour le downloader (optionnel) : variable d’environnement `GITHUB_TOKEN` ou `--github-token`
 
-Note d’hypothèse : si vous avez besoin de racines de données configurables ou de paramètres serveur de production, ces options ne sont pas encore exposées dans des fichiers de configuration à la racine.
+Remarque sur les hypothèses : si vous avez besoin de racines de jeux de données configurables ou de paramètres serveur de production, ils ne sont pas encore exposés dans des fichiers de configuration de haut niveau.
 
 ## Exemples 🧪
 
@@ -189,73 +197,72 @@ curl -X POST "http://localhost:8080/api/extract?path=zenodo_8177571/sample_archi
 ### Exécuter des modes de téléchargement sélectifs
 
 ```bash
-# Organoid datasets: skip GEO, keep Zenodo
+# Jeux de données organoïdes : ignorer GEO, conserver Zenodo
 python scripts/download_organoid_datasets.py --skip-geo
 
-# Drug-screening datasets: only Zenodo
+# Jeux de données de criblage pharmacologique : seulement Zenodo
 python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github --skip-kaggle
 ```
 
 ## Notes de développement 🛠️
 
-- Le backend sert les ressources statiques frontend depuis `web/`.
+- Le backend sert les assets frontend statiques depuis `web/`.
 - Le service worker et le manifeste se trouvent dans `web/sw.js` et `web/manifest.json`.
-- Le routage par type de fichier et les aperçus sont implémentés dans `app.py`.
-- Validation manuelle (guidance actuelle du projet) : la PWA se charge sur `http://localhost:8080`
-- Validation manuelle (guidance actuelle du projet) : `/api/datasets` retourne du JSON
-- Validation manuelle (guidance actuelle du projet) : les aperçus s’affichent pour CSV/XLSX/images/archives
+- Le routage selon le type de fichier et les prévisualisations sont implémentés dans `app.py`.
+- Validation manuelle (guide actuelle du projet) : la PWA se charge sur `http://localhost:8080`
+- Validation manuelle (guide actuelle du projet) : `/api/datasets` renvoie du JSON
+- Validation manuelle (guide actuelle du projet) : les prévisualisations s’affichent pour CSV/XLSX/images/archives
 
 ## Dépannage 🩺
 
-- `ModuleNotFoundError` pour les bibliothèques d’aperçu : installez les packages manquants (`pandas`, `anndata`, `numpy`, `Pillow`, `tifffile`).
-- Listing de jeux de données vide : vérifiez que des données existent sous `datasets/` et que les répertoires ne sont pas préfixés par un point.
-- Aperçu `.h5ad` sans image de nuage de points : vérifiez que `anndata`, `numpy` et `Pillow` sont installés.
-- Problèmes d’aperçu/extraction de grandes archives : utilisez l’endpoint d’extraction et inspectez directement les fichiers extraits.
-- Erreurs de limite de débit du downloader GitHub : fournissez `GITHUB_TOKEN` via variable d’environnement ou option CLI.
-- Téléchargement Kaggle non fonctionnel : installez `kaggle` et configurez les identifiants `~/.kaggle/kaggle.json`.
+- `ModuleNotFoundError` pour les bibliothèques de prévisualisation : installez les paquets manquants (`pandas`, `anndata`, `numpy`, `Pillow`, `tifffile`).
+- Liste vide de jeux de données : vérifiez que des données existent dans `datasets/` et que les dossiers ne commencent pas par un point.
+- Prévisualisation `.h5ad` sans scatter image : vérifiez que `anndata`, `numpy` et `Pillow` sont installés.
+- Problèmes de prévisualisation/extraction de grosses archives : utilisez l’endpoint d’extraction et inspectez directement les fichiers extraits.
+- Erreurs de quota de taux du downloader GitHub : fournissez `GITHUB_TOKEN` via la variable d’environnement ou le flag CLI.
+- Téléchargement Kaggle non fonctionnel : installez `kaggle` et configurez les identifiants dans `~/.kaggle/kaggle.json`.
 
 ## Feuille de route 🧭
 
-Améliorations potentielles suivantes (pas encore entièrement implémentées dans cette app racine) :
+Améliorations potentielles (pas encore totalement implémentées dans cette app racine) :
 
-- Ajouter un manifeste de dépendances à la racine (`requirements.txt` ou `pyproject.toml`)
-- Ajouter des tests automatisés pour les handlers API et les fonctions d’aperçu
-- Ajouter une configuration de racine de données et de cache
-- Ajouter un profil d’exécution explicite pour la production (non-debug, guide reverse-proxy)
+- Ajouter un manifeste de dépendances racine (`requirements.txt` ou `pyproject.toml`)
+- Ajouter des tests automatisés pour les handlers API et les fonctions de prévisualisation
+- Ajouter des réglages configurables pour la racine des données et du cache
+- Ajouter un profil d’exécution explicitement orienté production (non debug, guidance reverse-proxy)
 - Étendre la documentation multilingue sous `i18n/`
 
-## Contribuer 🤝
+## Contribution 🤝
 
-Les contributions sont les bienvenues. Workflow pratique :
+Les contributions sont bienvenues. Un flux de travail pratique :
 
-1. Forker et créer une branche ciblée.
-2. Limiter les changements à une seule zone logique.
-3. Valider manuellement le démarrage de l’app et les endpoints clés.
-4. Ouvrir une PR avec résumé, commandes exécutées et captures d’écran pour les changements UI.
+1. Forkez et créez une branche ciblée.
+2. Gardez les changements centrés sur une zone logique unique.
+3. Validez manuellement le démarrage de l’application et les endpoints clés.
+4. Ouvrez une PR avec un résumé, les commandes exécutées, et des captures d’écran pour les changements UI.
 
 Conventions de style locales dans ce dépôt :
 
-- Python : indentation 4 espaces, fonctions/fichiers en snake_case, classes en CapWords
+- Python : indentation de 4 espaces, fonctions/fichiers en snake_case, classes en CapWords
 - Conserver la logique frontend dans `web/app.js` pour cette app (éviter les réécritures de framework inutiles)
-- Garder des commentaires concis et uniquement lorsque la logique n’est pas évidente
+- Garder les commentaires concis et seulement quand la logique n’est pas évidente
 
-## Disposition du projet (Résumé canonique) 📌
+## Synthèse du projet (référence) 📌
 
 - `app.py` : serveur Tornado et routes API.
-- `web/` : ressources PWA.
-- `scripts/` : scripts d’aide au téléchargement de jeux de données.
+- `web/` : assets PWA.
+- `scripts/` : helpers de téléchargement de jeux de données.
 - `datasets/` : stockage local des données.
-- `papers/` : sous-module avec des documents de référence.
+- `papers/` : sous-module contenant des documents de référence.
 
-## Licence 📄
+## ❤️ Support
 
-Aucun fichier `LICENSE` de projet à la racine n’est actuellement présent dans ce dépôt.
+| Donate | PayPal | Stripe |
+| --- | --- | --- |
+| [![Donate](https://camo.githubusercontent.com/24a4914f0b42c6f435f9e101621f1e52535b02c225764b2f6cc99416926004b7/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d4c617a79696e674172742d3045413545393f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465)](https://chat.lazying.art/donate) | [![PayPal](https://camo.githubusercontent.com/d0f57e8b016517a4b06961b24d0ca87d62fdba16e18bbdb6aba28e978dc0ea21/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f50617950616c2d526f6e677a686f754368656e2d3030343537433f7374796c653d666f722d7468652d6261646765266c6f676f3d70617970616c266c6f676f436f6c6f723d7768697465)](https://paypal.me/RongzhouChen) | [![Stripe](https://camo.githubusercontent.com/1152dfe04b6943afe3a8d2953676749603fb9f95e24088c92c97a01a897b4942/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f5374726970652d446f6e6174652d3633354246463f7374796c653d666f722d7468652d6261646765266c6f676f3d737472697065266c6f676f436f6c6f723d7768697465)](https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400) |
 
-Note d’hypothèse : tant qu’une licence racine n’est pas ajoutée, considérez les conditions de réutilisation/redistribution comme non spécifiées pour la base de code OrganoidAgent au niveau racine.
+## License 📄
 
-## Sponsor & Dons ❤️
+Aucun fichier `LICENSE` de projet n’est actuellement présent à la racine de ce dépôt.
 
-- GitHub Sponsors: https://github.com/sponsors/lachlanchen
-- Donate: https://chat.lazying.art/donate
-- PayPal: https://paypal.me/RongzhouChen
-- Stripe: https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400
+Remarque sur les hypothèses : tant qu’aucune licence racine n’est ajoutée, les conditions de réutilisation/redistribution restent non précisées pour la base de code OrganoidAgent de niveau racine.

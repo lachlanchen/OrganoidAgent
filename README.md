@@ -1,20 +1,28 @@
 [English](README.md) · [العربية](i18n/README.ar.md) · [Español](i18n/README.es.md) · [Français](i18n/README.fr.md) · [日本語](i18n/README.ja.md) · [한국어](i18n/README.ko.md) · [Tiếng Việt](i18n/README.vi.md) · [中文 (简体)](i18n/README.zh-Hans.md) · [中文（繁體）](i18n/README.zh-Hant.md) · [Deutsch](i18n/README.de.md) · [Русский](i18n/README.ru.md)
 
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/lachlanchen/lachlanchen/main/figs/banner.png" alt="LazyingArt banner" />
-</p>
+
+[![LazyingArt banner](https://github.com/lachlanchen/lachlanchen/raw/main/figs/banner.png)](https://github.com/lachlanchen/lachlanchen/blob/main/figs/banner.png)
 
 # OrganoidAgent
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Backend](https://img.shields.io/badge/Backend-Tornado-2c7fb8)
 ![Frontend](https://img.shields.io/badge/Frontend-PWA-0a9396)
+![Data](https://img.shields.io/badge/Data-Local%20First-4c956c)
+![Format](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 ![Status](https://img.shields.io/badge/Status-Active-success)
-![Data](https://img.shields.io/badge/Data-Local%20first-4c956c)
-![Preview](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 
-OrganoidAgent is a lightweight Tornado backend + Progressive Web App (PWA) frontend for browsing and previewing organoid datasets locally. It supports practical, file-type-aware previews for tables, microscopy images (including TIFF), archives, gzip text files, and AnnData `.h5ad` analysis objects.
+OrganoidAgent is a lightweight Tornado backend and Progressive Web App (PWA) for browsing and previewing organoid datasets locally with minimal setup. It provides file-type-aware preview rendering for tables, microscopy images (including TIFF), archives, gzip text, and AnnData `.h5ad` analysis objects.
+
+## 🎯 At a glance
+
+| Goal | What this repo gives you |
+|---|---|
+| Local-first dataset exploration | Dataset discovery, metadata, and file browsing from a local `datasets/` workspace |
+| Rich previews | Table, image (including TIFF), archive, `.gz`, and `.h5ad` preview pathways |
+| Offline-friendly frontend | Installable PWA shell with a service worker and manifest |
+| Practical operations | Archive extraction + category-filtered indexing paths |
 
 ## Overview 🔭
 
@@ -31,11 +39,11 @@ This repository also contains adjacent research and utility workspaces (`BioAgen
 
 - Local dataset indexing with size and file-count summaries
 - Recursive dataset file listing with inferred file kind
-- Preview support includes CSV/TSV/XLS/XLSX tables
-- Preview support includes TIFF/JPG/PNG images
-- Preview support includes `.h5ad` summaries with embedding/PCA scatter preview generation
-- Preview support includes ZIP/TAR/TGZ archive listing + first-image preview attempt
-- Preview support includes `.gz` text first-lines preview
+- Preview support for CSV/TSV/XLS/XLSX tables
+- Preview support for TIFF/JPG/PNG images
+- Preview support for `.h5ad` summaries with embedding/PCA scatter preview generation
+- Preview support for ZIP/TAR/TGZ archive listing + first-image preview attempt
+- Preview support for `.gz` text first-lines preview
 - Archive extraction endpoint for large packaged datasets
 - Dataset-level metadata cards rendered from Markdown
 - PWA frontend with service worker and manifest
@@ -247,15 +255,14 @@ Local style conventions in this repository:
 - `datasets/`: local data storage.
 - `papers/`: submodule with reference materials.
 
+## ❤️ Support
+
+| Donate | PayPal | Stripe |
+| --- | --- | --- |
+| [![Donate](https://camo.githubusercontent.com/24a4914f0b42c6f435f9e101621f1e52535b02c225764b2f6cc99416926004b7/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d4c617a79696e674172742d3045413545393f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465)](https://chat.lazying.art/donate) | [![PayPal](https://camo.githubusercontent.com/d0f57e8b016517a4b06961b24d0ca87d62fdba16e18bbdb6aba28e978dc0ea21/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f50617950616c2d526f6e677a686f754368656e2d3030343537433f7374796c653d666f722d7468652d6261646765266c6f676f3d70617970616c266c6f676f436f6c6f723d7768697465)](https://paypal.me/RongzhouChen) | [![Stripe](https://camo.githubusercontent.com/1152dfe04b6943afe3a8d2953676749603fb9f95e24088c92c97a01a897b4942/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f5374726970652d446f6e6174652d3633354246463f7374796c653d666f722d7468652d6261646765266c6f676f3d737472697065266c6f676f436f6c6f723d7768697465)](https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400) |
+
 ## License 📄
 
 No top-level project `LICENSE` file is currently present in this repository root.
 
 Assumption note: until a root license is added, treat reuse/redistribution terms as unspecified for the top-level OrganoidAgent codebase.
-
-## Sponsor & Donate ❤️
-
-- GitHub Sponsors: https://github.com/sponsors/lachlanchen
-- Donate: https://chat.lazying.art/donate
-- PayPal: https://paypal.me/RongzhouChen
-- Stripe: https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400

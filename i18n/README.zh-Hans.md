@@ -1,59 +1,65 @@
 [English](../README.md) · [العربية](README.ar.md) · [Español](README.es.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [中文 (简体)](README.zh-Hans.md) · [中文（繁體）](README.zh-Hant.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
 
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/lachlanchen/lachlanchen/main/figs/banner.png" alt="LazyingArt banner" />
-</p>
+[![LazyingArt banner](https://github.com/lachlanchen/lachlanchen/raw/main/figs/banner.png)](https://github.com/lachlanchen/lachlanchen/blob/main/figs/banner.png)
 
 # OrganoidAgent
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Backend](https://img.shields.io/badge/Backend-Tornado-2c7fb8)
 ![Frontend](https://img.shields.io/badge/Frontend-PWA-0a9396)
+![Data](https://img.shields.io/badge/Data-Local%20First-4c956c)
+![Format](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 ![Status](https://img.shields.io/badge/Status-Active-success)
-![Data](https://img.shields.io/badge/Data-Local%20first-4c956c)
-![Preview](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 
-OrganoidAgent 是一个轻量级的 Tornado 后端 + 渐进式 Web 应用（PWA）前端，用于在本地浏览和预览类器官数据集。它支持实用的、按文件类型感知的预览能力，包括表格、显微图像（含 TIFF）、压缩包、gzip 文本文件，以及 AnnData `.h5ad` 分析对象。
+OrganoidAgent 是一个轻量级的 Tornado 后端和渐进式 Web 应用（PWA），用于以最少配置在本地浏览和预览类器官数据集。它按文件类型提供预览渲染，涵盖表格、显微镜图像（包括 TIFF）、压缩包、gzip 文本以及 AnnData `.h5ad` 分析对象。
 
-## 概览 🔭
+## 🎯 一览
 
-该核心应用面向交互式数据集探索，且部署成本低：
+| 目标 | 仓库提供的内容 |
+|---|---|
+| 本地优先的数据集探索 | 在本地 `datasets/` 工作区中进行数据集发现、元数据查看和文件浏览 |
+| 丰富预览 | 表格、图像（含 TIFF）、压缩包、`.gz` 和 `.h5ad` 的预览路径 |
+| 离线友好前端 | 内置可安装的 PWA 外壳，并配套 service worker 与 manifest |
+| 实用操作能力 | 提供归档解压与按类别过滤的索引路径 |
 
-- 后端 API 与预览引擎位于 `app.py`
-- PWA 前端位于 `web/`
-- 下载辅助脚本位于 `scripts/`
-- 本地数据集工作区位于 `datasets/`（已被 git 忽略）
+## Overview 🔭
 
-此仓库还包含相邻的研究与工具工作区（`BioAgent`、`BioAgentUtils`、`references`、`results`、`vendor`、`papers` 子模块）。本 README 主要说明的是顶层 `OrganoidAgent` 应用的运行方式。
+核心应用面向交互式数据集探索设计，且部署门槛极低：
 
-## 功能特性 ✨
+- 后端 API 与预览引擎在 `app.py` 中
+- PWA 前端在 `web/`
+- 下载辅助工具在 `scripts/`
+- 本地数据工作区为 `datasets/`（由 git 忽略）
 
-- 本地数据集索引，提供大小与文件数汇总
-- 递归列出数据集文件并推断文件类型
-- 预览支持 CSV/TSV/XLS/XLSX 表格
-- 预览支持 TIFF/JPG/PNG 图像
-- 预览支持 `.h5ad` 摘要，并可生成 embedding/PCA 散点预览
-- 预览支持 ZIP/TAR/TGZ 压缩包内容列表 + 首张图像预览尝试
-- 预览支持 `.gz` 文本前几行
-- 为大型打包数据集提供压缩包解压接口
+本仓库还包含相关的研究与工具工作区（`BioAgent`、`BioAgentUtils`、`references`、`results`、`vendor`、`papers` 子模块）。本 README 主要描述顶层 `OrganoidAgent` 应用的运行方式。
+
+## Features ✨
+
+- 本地数据集索引并提供大小与文件数量汇总
+- 递归列出数据集文件，并推断文件类型
+- CSV/TSV/XLS/XLSX 表格预览支持
+- TIFF/JPG/PNG 图像预览支持
+- `.h5ad` 摘要支持，支持 embedding/PCA 的散点图预览生成
+- ZIP/TAR/TGZ 压缩包内容列表示例 + 首张图像预览尝试
+- `.gz` 文本前几行预览支持
+- 为大型打包数据集提供归档解压端点
 - 从 Markdown 渲染数据集级元数据卡片
 - 带有 service worker 与 manifest 的 PWA 前端
-- 基础路径净化（`safe_dataset_path`），将文件访问限制在 `datasets/` 下
+- 基础路径清洗（`safe_dataset_path`）确保文件访问限制在 `datasets/` 下
 
-### 快速一览
+### 一眼看懂
 
-| 区域 | 提供内容 |
+| 范围 | 提供能力 |
 |---|---|
-| 数据集发现 | 基于目录层级的数据集列表，含文件数与大小汇总 |
-| 文件探索 | 递归列出与类型推断（`image`、`table`、`analysis`、`archive` 等） |
-| 丰富预览 | 表格、TIFF/图像、gzip 文本片段、压缩包内容、AnnData 摘要 |
-| 分析可视化 | 从 `obsm` embedding 或 PCA 回退生成 `.h5ad` 散点预览 |
-| 打包支持 | 压缩包列表 + 面向大型压缩数据的解压接口 |
-| Web 体验 | 可安装的 PWA，配备离线友好的 service worker 静态资源 |
+| 数据集发现 | 按目录层级展示数据集列表，并给出文件数与大小汇总 |
+| 文件探索 | 递归列出并推断文件类型（`image`、`table`、`analysis`、`archive` 等） |
+| 丰富预览 | 表格、TIFF/图片、gzip 文本片段、压缩包内容、AnnData 摘要 |
+| 分析可视化 | 基于 `obsm` embeddings 或 PCA 回退的 `.h5ad` 散点预览 |
+| 打包支持 | 压缩包列表展示 + 大型压缩数据的解压端点 |
+| Web 体验 | 可安装的 PWA，配套离线友好的 service worker 资源 |
 
-## 项目结构 🗂️
+## Project Structure 🗂️
 
 ```text
 OrganoidAgent/
@@ -81,75 +87,75 @@ OrganoidAgent/
 └─ vendor/                        # external submodules (copilot-sdk, paper-agent, codex)
 ```
 
-## 前置要求 ✅
+## Prerequisites ✅
 
 - Python `3.10+`
-- 推荐的环境管理器：`conda` 或 `venv`
+- 推荐的环境管理工具：`conda` 或 `venv`
 
-根据源码推断的必需/可选 Python 包：
+从源码推断的必需/可选 Python 包：
 
 | 包 | 作用 |
 |---|---|
-| `tornado` | 启动服务器所必需 |
+| `tornado` | 启动服务所需 |
 | `pandas` | 可选：表格预览支持 |
 | `anndata`, `numpy` | 可选：`.h5ad` 预览与分析绘图 |
-| `Pillow` | 可选：图像渲染与预览生成 |
+| `Pillow` | 可选：图像渲染及生成预览 |
 | `tifffile` | 可选：TIFF 预览支持 |
 | `requests` | 可选：数据集下载脚本 |
-| `kaggle` | 可选：药筛脚本中的 Kaggle 下载 |
+| `kaggle` | 可选：药物筛选脚本中的 Kaggle 下载 |
 
-假设说明：当前顶层应用尚无根目录 `requirements.txt`、`pyproject.toml` 或 `environment.yml`。
+说明：目前顶层应用还没有根目录级别的 `requirements.txt`、`pyproject.toml` 或 `environment.yml`。
 
-## 安装 ⚙️
+## Installation ⚙️
 
 ```bash
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
 
-# Option A: conda (example)
+# 方案 A：conda（示例）
 conda create -n organoid python=3.10 -y
 conda activate organoid
 pip install tornado pandas anndata numpy pillow tifffile requests
 
-# Option B: minimal runtime only
+# 方案 B：仅最小运行环境
 pip install tornado
 ```
 
-## 使用 🚀
+## Usage 🚀
 
-### 快速开始
+### Quick Start
 
 ```bash
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
-conda activate organoid  # optional if you already have the deps
+conda activate organoid  # 如果已安装依赖可省略
 python app.py --port 8080
 ```
 
 打开 `http://localhost:8080`。
 
-### API 冒烟测试
+### API Smoke Test
 
 ```bash
 curl http://localhost:8080/api/datasets
 ```
 
-### 下载数据（可选）
+### Download Data (Optional)
 
 ```bash
 python scripts/download_organoid_datasets.py
 python scripts/download_drug_screening_datasets.py
 ```
 
-下载的数据位于 `datasets/`（git-ignored）。
+下载的数据保存在 `datasets/`（git-ignored）。
 
-## API 端点 🌐
+## API Endpoints 🌐
 
-| Method | Endpoint | Purpose |
+| 方法 | 端点 | 用途 |
 |---|---|---|
-| `GET` | `/api/datasets` | 列出数据集及汇总统计 |
-| `GET` | `/api/datasets/{name}` | 列出单个数据集文件 |
+| `GET` | `/api/datasets` | 列出包含汇总统计的数据集 |
+| `GET` | `/api/datasets/{name}` | 列出某个数据集的全部文件 |
 | `GET` | `/api/datasets/{name}/metadata` | 返回 Markdown 元数据卡片 |
 | `GET` | `/api/category/{datasets|segmentation|features|analysis}` | 按类别列出文件 |
-| `GET` | `/api/preview?path=<relative_path_under_datasets>` | 返回按文件类型适配的预览载荷 |
+| `GET` | `/api/preview?path=<relative_path_under_datasets>` | 按文件类型返回预览负载 |
 | `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | 将压缩包解压到同级 `_extracted` 目录 |
 | `GET` | `/files/<path>` | 原始数据集文件服务 |
 | `GET` | `/previews/<path>` | 已生成预览资源服务 |
@@ -160,34 +166,34 @@ python scripts/download_drug_screening_datasets.py
 curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
 ```
 
-## 配置 🧩
+## Configuration 🧩
 
-当前运行时配置刻意保持精简：
+当前运行配置有意保持简洁：
 
 - 服务器端口：`app.py` 中的 `--port` 参数（默认 `8080`）
-- 数据目录：固定为仓库根目录下的 `datasets/`
+- 数据目录：仓库根路径下固定为 `datasets/`
 - 预览缓存：`datasets/.cache/previews`
 - 元数据映射：`app.py` 中的 `DATASET_METADATA` 字典
-- 下载器的 GitHub API token（可选）：环境变量 `GITHUB_TOKEN` 或 `--github-token`
+- 下载器的 GitHub API token（可选）：`GITHUB_TOKEN` 环境变量或 `--github-token`
 
-假设说明：如果你需要可配置的数据集根目录或生产级服务器设置，这些能力目前尚未在顶层配置文件中公开。
+说明：如果你需要可配置的数据集根目录或生产环境服务器设置，目前这些尚未在顶层配置文件中暴露。
 
-## 示例 🧪
+## Examples 🧪
 
-### 浏览特定类别文件
+### Browse category-specific files
 
 ```bash
 curl http://localhost:8080/api/category/analysis
 curl http://localhost:8080/api/category/features
 ```
 
-### 解压压缩包
+### Extract an archive
 
 ```bash
 curl -X POST "http://localhost:8080/api/extract?path=zenodo_8177571/sample_archive.zip"
 ```
 
-### 运行选择性下载模式
+### Run selective download modes
 
 ```bash
 # Organoid datasets: skip GEO, keep Zenodo
@@ -197,50 +203,50 @@ python scripts/download_organoid_datasets.py --skip-geo
 python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github --skip-kaggle
 ```
 
-## 开发说明 🛠️
+## Development Notes 🛠️
 
 - 后端从 `web/` 提供前端静态资源。
 - Service worker 与 manifest 位于 `web/sw.js` 和 `web/manifest.json`。
-- 文件类型路由与预览逻辑实现于 `app.py`。
-- 手动验证（当前项目指引）：PWA 可在 `http://localhost:8080` 正常加载
-- 手动验证（当前项目指引）：`/api/datasets` 返回 JSON
-- 手动验证（当前项目指引）：CSV/XLSX/图像/压缩包预览可正常渲染
+- 文件类型路由与预览逻辑实现在 `app.py`。
+- 手动验证（当前项目说明）：PWA 在 `http://localhost:8080` 加载成功
+- 手动验证（当前项目说明）：`/api/datasets` 返回 JSON
+- 手动验证（当前项目说明）：CSV/XLSX/图像/压缩包可正常预览渲染
 
-## 故障排查 🩺
+## Troubleshooting 🩺
 
-- 预览库 `ModuleNotFoundError`：安装缺失包（`pandas`、`anndata`、`numpy`、`Pillow`、`tifffile`）。
-- 数据集列表为空：确认 `datasets/` 下存在数据，且目录名不是点前缀隐藏目录。
-- `.h5ad` 预览缺少散点图：检查是否安装 `anndata`、`numpy`、`Pillow`。
-- 大型压缩包预览/解压异常：使用解压接口并直接检查解压后的文件。
-- GitHub 下载器触发速率限制：通过环境变量或 CLI 参数提供 `GITHUB_TOKEN`。
-- Kaggle 下载不可用：安装 `kaggle`，并在 `~/.kaggle/kaggle.json` 配置凭据。
+- 预览库报 `ModuleNotFoundError`：安装缺失包（`pandas`、`anndata`、`numpy`、`Pillow`、`tifffile`）。
+- 数据集列表为空：确认 `datasets/` 下有数据，且目录未使用点号作为前缀。
+- `.h5ad` 预览缺少散点图：检查 `anndata`、`numpy`、`Pillow` 是否已安装。
+- 大型压缩包预览/解压异常：使用解压端点并直接检查解压后的文件。
+- GitHub 下载器出现速率限制：通过环境变量或 CLI 参数提供 `GITHUB_TOKEN`。
+- Kaggle 下载无法运行：安装 `kaggle` 并在 `~/.kaggle/kaggle.json` 配置凭据。
 
-## 路线图 🧭
+## Roadmap 🧭
 
-潜在的后续改进（在此顶层应用中尚未完全实现）：
+该顶层应用的下一步改进方向（目前尚未完全实现）：
 
-- 增加根级依赖清单（`requirements.txt` 或 `pyproject.toml`）
-- 为 API 处理器和预览函数增加自动化测试
-- 增加可配置的数据集根目录与缓存设置
-- 增加明确的生产环境运行配置（非 debug、反向代理指引）
-- 在 `i18n/` 下扩展多语言文档
+- 增加根目录依赖清单（`requirements.txt` 或 `pyproject.toml`）
+- 为 API 处理器与预览函数补充自动化测试
+- 增加可配置的数据集根目录和缓存参数
+- 增加明确的生产环境运行方案（非 debug 模式、反向代理说明）
+- 扩展 `i18n/` 下的多语言文档
 
-## 贡献 🤝
+## Contributing 🤝
 
-欢迎贡献。推荐的实用流程：
+欢迎参与贡献。建议的实用流程：
 
 1. Fork 并创建聚焦分支。
-2. 让改动聚焦于一个逻辑领域。
+2. 保持变更仅覆盖一个逻辑范围。
 3. 手动验证应用启动与关键端点。
-4. 提交 PR，附上摘要、执行过的命令以及 UI 改动截图。
+4. 提交 PR，包含摘要、执行命令与 UI 变更截图。
 
-本仓库的本地风格约定：
+本仓库本地风格规范：
 
 - Python：4 空格缩进，函数/文件名使用 snake_case，类名使用 CapWords
-- 本应用前端逻辑保持在 `web/app.js`（避免不必要的框架重写）
-- 注释保持简洁，仅在逻辑不明显时添加
+- 本应用前端逻辑保留在 `web/app.js` 中（避免不必要的框架重写）
+- 仅在逻辑不明显时写简明注释
 
-## 项目布局（规范摘要） 📌
+## Project Layout (Canonical Summary) 📌
 
 - `app.py`：Tornado 服务器与 API 路由。
 - `web/`：PWA 资源。
@@ -248,15 +254,14 @@ python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github
 - `datasets/`：本地数据存储。
 - `papers/`：包含参考资料的子模块。
 
-## 许可证 📄
+## ❤️ Support
 
-当前仓库根目录尚未提供顶层项目 `LICENSE` 文件。
+| Donate | PayPal | Stripe |
+| --- | --- | --- |
+| [![Donate](https://camo.githubusercontent.com/24a4914f0b42c6f435f9e101621f1e52535b02c225764b2f6cc99416926004b7/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d4c617a79696e674172742d3045413545393f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465)](https://chat.lazying.art/donate) | [![PayPal](https://camo.githubusercontent.com/d0f57e8b016517a4b06961b24d0ca87d62fdba16e18bbdb6aba28e978dc0ea21/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f50617950616c2d526f6e677a686f754368656e2d3030343537433f7374796c653d666f722d7468652d6261646765266c6f676f3d70617970616c266c6f676f436f6c6f723d7768697465)](https://paypal.me/RongzhouChen) | [![Stripe](https://camo.githubusercontent.com/1152dfe04b6943afe3a8d2953676749603fb9f95e24088c92c97a01a897b4942/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f5374726970652d446f6e6174652d3633354246463f7374796c653d666f722d7468652d6261646765266c6f676f3d737472697065266c6f676f436f6c6f723d7768697465)](https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400) |
 
-假设说明：在根级许可证补充前，顶层 OrganoidAgent 代码库的复用/再分发条款可视为未明确。
+## License 📄
 
-## 赞助与捐赠 ❤️
+目前仓库根目录尚未包含顶层项目 `LICENSE` 文件。
 
-- GitHub Sponsors: https://github.com/sponsors/lachlanchen
-- Donate: https://chat.lazying.art/donate
-- PayPal: https://paypal.me/RongzhouChen
-- Stripe: https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400
+说明：在补充根级许可证前，顶层 OrganoidAgent 代码库的复用和再分发条款暂未明确。

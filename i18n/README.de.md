@@ -1,55 +1,63 @@
 [English](../README.md) · [العربية](README.ar.md) · [Español](README.es.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Tiếng Việt](README.vi.md) · [中文 (简体)](README.zh-Hans.md) · [中文（繁體）](README.zh-Hant.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/lachlanchen/lachlanchen/main/figs/banner.png" alt="LazyingArt banner" />
-</p>
+
+[![LazyingArt banner](https://github.com/lachlanchen/lachlanchen/raw/main/figs/banner.png)](https://github.com/lachlanchen/lachlanchen/blob/main/figs/banner.png)
 
 # OrganoidAgent
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Backend](https://img.shields.io/badge/Backend-Tornado-2c7fb8)
 ![Frontend](https://img.shields.io/badge/Frontend-PWA-0a9396)
+![Data](https://img.shields.io/badge/Data-Local%20First-4c956c)
+![Format](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 ![Status](https://img.shields.io/badge/Status-Active-success)
-![Data](https://img.shields.io/badge/Data-Local%20first-4c956c)
-![Preview](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 
-OrganoidAgent ist ein leichtgewichtiges Tornado-Backend + Progressive Web App (PWA)-Frontend zum lokalen Durchsuchen und Vorschauen von Organoid-Datensätzen. Es unterstützt praxisnahe, dateitypabhängige Vorschauen für Tabellen, Mikroskopiebilder (einschließlich TIFF), Archive, gzip-Textdateien und AnnData-`.h5ad`-Analyseobjekte.
+OrganoidAgent ist ein schlankes Tornado-Backend und eine Progressive Web App (PWA) zum Durchsuchen und Vorschau lokaler Organoid-Datensätze mit minimalem Setup. Es bietet eine dateitypspezifische Vorschau für Tabellen, Mikroskopie-Bilder (einschließlich TIFF), Archive, gzip-Text und AnnData `.h5ad`-Analyseobjekte.
+
+## 🎯 Kurzüberblick
+
+| Ziel | Was dieses Repo bietet |
+|---|---|
+| Lokale, datenzentrierte Erkundung | Datensatzentdeckung, Metadaten und Dateibrowser direkt aus einem lokalen `datasets/`-Arbeitsbereich |
+| Umfassende Vorschauen | Vorschaupfade für Tabellen, Bilder (inkl. TIFF), Archive, `.gz` und `.h5ad` |
+| Offline-freundliches Frontend | Installierbare PWA-Shell mit Service Worker und Manifest |
+| Praktische Abläufe | Entpacken von Archiven + kategoriebasierte Indexierung |
 
 ## Überblick 🔭
 
-Die Kernanwendung ist für die interaktive Datensatz-Exploration mit minimalem Setup ausgelegt:
+Die Kernanwendung ist für interaktive Datensatz-Exploration mit minimalem Setup konzipiert:
 
 - Backend-API und Vorschau-Engine in `app.py`
 - PWA-Frontend in `web/`
 - Download-Helfer in `scripts/`
-- Lokaler Datensatz-Arbeitsbereich in `datasets/` (git-ignoriert)
+- Lokaler Datensatz-Arbeitsbereich in `datasets/` (git-ignored)
 
-Dieses Repository enthält außerdem angrenzende Forschungs- und Utility-Arbeitsbereiche (`BioAgent`, `BioAgentUtils`, `references`, `results`, `vendor`, `papers`-Submodul). Die primäre Laufzeit, die in diesem README beschrieben ist, ist die App `OrganoidAgent` auf oberster Ebene.
+Dieses Repository enthält außerdem angrenzende Forschungs- und Hilfs-Arbeitsbereiche (`BioAgent`, `BioAgentUtils`, `references`, `results`, `vendor`, Untermodul `papers`). Das in dieser README beschriebene Primär-Runtime ist die Top-Level-App `OrganoidAgent`.
 
-## Funktionen ✨
+## Features ✨
 
-- Lokale Datensatz-Indizierung mit Größen- und Dateianzahl-Zusammenfassungen
-- Rekursive Dateiauflistung pro Datensatz mit abgeleitetem Dateityp
-- Vorschau-Unterstützung für CSV/TSV/XLS/XLSX-Tabellen
-- Vorschau-Unterstützung für TIFF/JPG/PNG-Bilder
-- Vorschau-Unterstützung für `.h5ad`-Zusammenfassungen mit Embedding-/PCA-Scatter-Vorschauerzeugung
-- Vorschau-Unterstützung für ZIP/TAR/TGZ-Archivauflistung + Versuch einer Erstbild-Vorschau
-- Vorschau-Unterstützung für `.gz`-Textvorschau der ersten Zeilen
-- Archiv-Extraktions-Endpoint für große paketierte Datensätze
-- Datensatz-Metadatenkarten, die aus Markdown gerendert werden
+- Lokale Datensatzindizierung mit Größen- und Dateianzahl-Zusammenfassungen
+- Rekursive Dateiauflistung mit erkannter Dateikategorie
+- Vorschauunterstützung für CSV/TSV/XLS/XLSX-Tabellen
+- Vorschauunterstützung für TIFF/JPG/PNG-Bilder
+- Vorschauunterstützung für `.h5ad`-Zusammenfassungen mit Embedding/PCA-Scatter-Vorschau
+- Vorschauunterstützung für ZIP/TAR/TGZ-Archiv-Listing + erster Bildvorschauversuch
+- Vorschau von `.gz`-Text: Ausgabe der ersten Zeilen
+- Endpunkt für Archiv-Extraktion bei großen gepackten Datensätzen
+- Datensatz-Metadaten-Karten aus Markdown gerendert
 - PWA-Frontend mit Service Worker und Manifest
-- Grundlegende Pfad-Sanitization (`safe_dataset_path`), um Dateizugriffe auf `datasets/` zu beschränken
+- Einfache Pfadbereinigung (`safe_dataset_path`), um Dateizugriff auf `datasets/` zu beschränken
 
-### Auf einen Blick
+### Kurzüberblick
 
-| Bereich | Was es bereitstellt |
+| Bereich | Was es bietet |
 |---|---|
-| Datensatzerkennung | Datensatzauflistung auf Verzeichnisebene mit Dateianzahlen und Größenzusammenfassungen |
-| Datei-Exploration | Rekursive Auflistung und Typableitung (`image`, `table`, `analysis`, `archive`, usw.) |
+| Datensatzentdeckung | Auflistung auf Verzeichnisebene mit Dateianzahlen und Größenübersichten |
+| Dateiexploration | Rekursive Auflistung und Erkennung von Dateiklassen (`image`, `table`, `analysis`, `archive` usw.) |
 | Umfangreiche Vorschauen | Tabellen, TIFF/Bilder, gzip-Textausschnitte, Archivinhalte, AnnData-Zusammenfassungen |
 | Analyse-Visualisierungen | `.h5ad`-Scatter-Vorschauen aus `obsm`-Embeddings oder PCA-Fallback |
-| Paketierungsunterstützung | Archivauflistung + Extraktions-Endpoint für große komprimierte Bündel |
+| Paketunterstützung | Archivlisten + Extraktions-Endpunkt für große komprimierte Bündel |
 | Web-UX | Installierbare PWA mit offline-freundlichen Service-Worker-Assets |
 
 ## Projektstruktur 🗂️
@@ -68,13 +76,13 @@ OrganoidAgent/
 │  ├─ download_organoid_datasets.py
 │  ├─ download_drug_screening_datasets.py
 │  └─ overlay_segmentations.py
-├─ datasets/                      # heruntergeladene Daten und Vorschau-Cache (git-ignoriert)
+├─ datasets/                      # heruntergeladene Daten und Vorschau-Cache (git-ignored)
 ├─ metadata/
 │  └─ zenodo_10643410.md
 ├─ papers/                        # Submodul: prompt-is-all-you-need
-├─ i18n/                          # derzeit vorhanden für mehrsprachige README-Dateien
-├─ BioAgent/                      # verwandte, aber separate App
-├─ BioAgentUtils/                 # verwandte Trainings-/Daten-Utilities
+├─ i18n/                          # derzeit für mehrsprachige README-Dateien vorhanden
+├─ BioAgent/                      # zugehörig, aber separate App
+├─ BioAgentUtils/                 # zugehörige Trainings-/Datenhilfen
 ├─ references/
 ├─ results/
 └─ vendor/                        # externe Submodule (copilot-sdk, paper-agent, codex)
@@ -83,21 +91,21 @@ OrganoidAgent/
 ## Voraussetzungen ✅
 
 - Python `3.10+`
-- Empfohlener Umgebungsmanager: `conda` oder `venv`
+- Empfohlene Umgebung: `conda` oder `venv`
 
-Erforderliche/optionale Python-Pakete, aus dem Quellcode abgeleitet:
+Erforderliche/optionale Python-Pakete aus dem Quelltext abgeleitet:
 
-| Paket | Rolle |
+| Paket | Aufgabe |
 |---|---|
 | `tornado` | Erforderlich für den Serverstart |
-| `pandas` | Optional: Tabellenvorschau-Unterstützung |
-| `anndata`, `numpy` | Optional: `.h5ad`-Vorschau und Analyse-Plotting |
-| `Pillow` | Optional: Bild-Rendering und generierte Vorschauen |
-| `tifffile` | Optional: TIFF-Vorschau-Unterstützung |
-| `requests` | Optional: Datensatz-Download-Skripte |
-| `kaggle` | Optional: Kaggle-Downloads im Drug-Screening-Skript |
+| `pandas` | Optional: Unterstützung für Tabellenvorschauen |
+| `anndata`, `numpy` | Optional: `.h5ad`-Vorschau und Analyse-Darstellung |
+| `Pillow` | Optional: Bildverarbeitung und erzeugte Vorschauen |
+| `tifffile` | Optional: TIFF-Vorschau |
+| `requests` | Optional: Dataset-Download-Skripte |
+| `kaggle` | Optional: Kaggle-Downloads im Skript für Drug Screening |
 
-Annahmenhinweis: Es gibt derzeit kein `requirements.txt`, `pyproject.toml` oder `environment.yml` im Repository-Root für die Top-Level-App.
+Hinweis: Für die Top-Level-App existiert derzeit weder eine `requirements.txt`, noch `pyproject.toml` oder `environment.yml`.
 
 ## Installation ⚙️
 
@@ -119,41 +127,41 @@ pip install tornado
 
 ```bash
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
-conda activate organoid  # optional, wenn die Abhängigkeiten bereits vorhanden sind
+conda activate organoid  # optional if you already have the deps
 python app.py --port 8080
 ```
 
 Öffne `http://localhost:8080`.
 
-### API-Smoke-Test
+### API Smoke Test
 
 ```bash
 curl http://localhost:8080/api/datasets
 ```
 
-### Daten herunterladen (optional)
+### Datendownload (optional)
 
 ```bash
 python scripts/download_organoid_datasets.py
 python scripts/download_drug_screening_datasets.py
 ```
 
-Heruntergeladene Daten liegen unter `datasets/` (git-ignoriert).
+Heruntergeladene Daten liegen in `datasets/` (git-ignored).
 
-## API-Endpoints 🌐
+## API-Endpunkte 🌐
 
-| Method | Endpoint | Zweck |
+| Methode | Endpunkt | Zweck |
 |---|---|---|
-| `GET` | `/api/datasets` | Datensätze mit zusammenfassenden Statistiken auflisten |
-| `GET` | `/api/datasets/{name}` | Dateien für einen Datensatz auflisten |
-| `GET` | `/api/datasets/{name}/metadata` | Markdown-Metadatenkarte zurückgeben |
-| `GET` | `/api/category/{datasets|segmentation|features|analysis}` | Kategorienorientierte Dateiauflistung |
-| `GET` | `/api/preview?path=<relative_path_under_datasets>` | Dateitypabhängige Vorschau-Payload |
-| `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | Archiv in benachbarten `_extracted`-Ordner extrahieren |
-| `GET` | `/files/<path>` | Rohdatei-Auslieferung von Datensätzen |
-| `GET` | `/previews/<path>` | Auslieferung generierter Vorschau-Assets |
+| `GET` | `/api/datasets` | Listet Datensätze mit Statistik-Zusammenfassungen |
+| `GET` | `/api/datasets/{name}` | Listet Dateien für einen Datensatz |
+| `GET` | `/api/datasets/{name}/metadata` | Liefert Markdown-Metadatenkarte |
+| `GET` | `/api/category/{datasets|segmentation|features|analysis}` | Kategorieorientierte Dateiauflistung |
+| `GET` | `/api/preview?path=<relative_path_under_datasets>` | Vorschauantworten mit Dateityp-spezifischer Logik |
+| `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | Entpackt ein Archiv in einen benachbarten `_extracted`-Ordner |
+| `GET` | `/files/<path>` | Direkte Bereitstellung von Rohdateien |
+| `GET` | `/previews/<path>` | Bereitstellung generierter Vorschaudateien |
 
-Beispielaufruf für Vorschau:
+Beispielhafter Vorschauaufruf:
 
 ```bash
 curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
@@ -161,19 +169,19 @@ curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
 
 ## Konfiguration 🧩
 
-Die aktuelle Laufzeitkonfiguration ist absichtlich klein gehalten:
+Die aktuelle Laufzeitkonfiguration ist bewusst klein gehalten:
 
-- Server-Port: `--port`-Argument in `app.py` (Standard `8080`)
-- Datenverzeichnis: fest auf `datasets/` relativ zum Repository-Root
+- Serverport: `--port`-Argument in `app.py` (Standard `8080`)
+- Datensatzverzeichnis: fest auf `datasets/` relativ zum Repository-Root
 - Vorschau-Cache: `datasets/.cache/previews`
-- Metadaten-Zuordnung: `DATASET_METADATA`-Dictionary in `app.py`
-- GitHub-API-Token für Downloader (optional): `GITHUB_TOKEN`-Umgebungsvariable oder `--github-token`
+- Metadaten-Mapping: `DATASET_METADATA`-Dictionary in `app.py`
+- GitHub-API-Token für Downloader (optional): Umgebungsvariable `GITHUB_TOKEN` oder `--github-token`
 
-Annahmenhinweis: Wenn du konfigurierbare Dataset-Roots oder Produktions-Servereinstellungen brauchst, sind diese derzeit noch nicht in Top-Level-Konfigurationsdateien verfügbar.
+Hinweis: Falls konfigurierbare Datensatz-Wurzeln oder Produktionsserver-Einstellungen nötig sind, sind diese noch nicht in zentralen Konfigurationsdateien verfügbar.
 
 ## Beispiele 🧪
 
-### Kategorie-spezifische Dateien durchsuchen
+### Dateibrowsing nach Kategorie
 
 ```bash
 curl http://localhost:8080/api/category/analysis
@@ -189,73 +197,73 @@ curl -X POST "http://localhost:8080/api/extract?path=zenodo_8177571/sample_archi
 ### Selektive Download-Modi ausführen
 
 ```bash
-# Organoid-Datensätze: GEO überspringen, Zenodo behalten
+# Organoid Datensätze: GEO überspringen, Zenodo behalten
 python scripts/download_organoid_datasets.py --skip-geo
 
-# Drug-Screening-Datensätze: nur Zenodo
+# Drug-screening Datensätze: nur Zenodo
 python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github --skip-kaggle
 ```
 
-## Entwicklungsnotizen 🛠️
+## Entwicklungshinweise 🛠️
 
-- Das Backend liefert statische Frontend-Assets aus `web/` aus.
-- Service Worker und Manifest liegen in `web/sw.js` und `web/manifest.json`.
-- Dateityp-Routing und Vorschauen sind in `app.py` implementiert.
-- Manuelle Validierung (aktuelle Projektvorgabe): PWA lädt unter `http://localhost:8080`
-- Manuelle Validierung (aktuelle Projektvorgabe): `/api/datasets` liefert JSON zurück
-- Manuelle Validierung (aktuelle Projektvorgabe): Vorschauen funktionieren für CSV/XLSX/Bilder/Archive
+- Backend liefert statische Frontend-Dateien aus `web/` aus.
+- Service Worker und Manifest befinden sich in `web/sw.js` und `web/manifest.json`.
+- Dateityp-Routing und Vorschau werden in `app.py` umgesetzt.
+- Manuelle Validierung (aktuelle Projektrichtlinie): PWA lädt unter `http://localhost:8080`
+- Manuelle Validierung (aktuelle Projektrichtlinie): `/api/datasets` liefert JSON
+- Manuelle Validierung (aktuelle Projektrichtlinie): Vorschauen werden für CSV/XLSX/Bilder/Archive gerendert
 
 ## Fehlerbehebung 🩺
 
-- `ModuleNotFoundError` für Vorschau-Bibliotheken: fehlende Pakete installieren (`pandas`, `anndata`, `numpy`, `Pillow`, `tifffile`).
-- Leere Datensatzauflistung: prüfen, ob Daten unter `datasets/` vorhanden sind und Verzeichnisse nicht mit Punktpräfix beginnen.
-- `.h5ad`-Vorschau ohne Scatter-Bild: prüfen, ob `anndata`, `numpy` und `Pillow` installiert sind.
-- Probleme bei großen Archiv-Vorschauen/-Extraktionen: Extraktions-Endpoint verwenden und extrahierte Dateien direkt prüfen.
-- GitHub-Downloader-Ratenlimitfehler: `GITHUB_TOKEN` über Umgebungsvariable oder CLI-Flag bereitstellen.
-- Kaggle-Download funktioniert nicht: `kaggle` installieren und Credentials in `~/.kaggle/kaggle.json` konfigurieren.
+- `ModuleNotFoundError` für Vorschau-Bibliotheken: Fehlende Pakete installieren (`pandas`, `anndata`, `numpy`, `Pillow`, `tifffile`).
+- Leere Datensatzliste: Prüfe, ob Daten unter `datasets/` vorhanden sind und Ordner nicht mit `.` beginnen.
+- `.h5ad`-Vorschau zeigt kein Scatterbild: Prüfe, ob `anndata`, `numpy` und `Pillow` installiert sind.
+- Probleme bei großer Archivvorschau/Extraktion: Nutze den Extraktions-Endpunkt und prüfe direkt die entpackten Dateien.
+- GitHub-Downloader-Rate-Limit-Fehler: `GITHUB_TOKEN` per Umgebungsvariable oder CLI-Flag bereitstellen.
+- Kaggle-Download funktioniert nicht: `kaggle` installieren und `~/.kaggle/kaggle.json`-Zugangsdaten konfigurieren.
 
 ## Roadmap 🧭
 
-Mögliche nächste Verbesserungen (in dieser Root-App noch nicht vollständig umgesetzt):
+Mögliche nächste Verbesserungen (in der Top-Level-App noch nicht vollständig umgesetzt):
 
-- Root-Abhängigkeitsmanifest hinzufügen (`requirements.txt` oder `pyproject.toml`)
-- Automatisierte Tests für API-Handler und Vorschaufunktionen hinzufügen
-- Konfigurierbares Datensatz-Root und Cache-Einstellungen hinzufügen
-- Explizites Produktions-Run-Profil hinzufügen (non-debug, Reverse-Proxy-Hinweise)
-- Mehrsprachige Dokumentation unter `i18n/` ausbauen
+- Wurzel-Dependency-Manifest hinzufügen (`requirements.txt` oder `pyproject.toml`)
+- Automatisierte Tests für API-Handler und Vorschaufunktionen ergänzen
+- Konfigurierbare Datensatz-Root- und Cache-Einstellungen einführen
+- Explizites Produktionslauf-Profil ergänzen (nicht im Debug, Reverse-Proxy-Hinweise)
+- Mehrsprachige Dokumentation unter `i18n/` erweitern
 
 ## Mitwirken 🤝
 
-Beiträge sind willkommen. Ein praktischer Workflow:
+Beiträge sind willkommen. Ein praktikabler Workflow:
 
-1. Fork erstellen und einen fokussierten Branch anlegen.
-2. Änderungen auf einen logischen Bereich begrenzen.
-3. App-Start und zentrale Endpoints manuell validieren.
-4. PR mit Zusammenfassung, ausgeführten Befehlen und Screenshots für UI-Änderungen öffnen.
+1. Forken und einen fokussierten Branch erstellen.
+2. Änderungen auf einen logischen Bereich beschränken.
+3. App-Start und Schlüsselfunktionen manuell validieren.
+4. PR mit Zusammenfassung, ausgeführten Befehlen und Screenshots bei UI-Änderungen eröffnen.
 
 Lokale Stilkonventionen in diesem Repository:
 
-- Python: 4 Leerzeichen Einrückung, snake_case für Funktionen/Dateien, CapWords für Klassen
-- Frontend-Logik für diese App in `web/app.js` halten (unnötige Framework-Rewrites vermeiden)
-- Kommentare knapp halten und nur bei nicht offensichtlicher Logik ergänzen
+- Python: 4-Leerzeichen-Einrückung, snake_case für Funktionen/Dateien, CapWords für Klassen
+- Behalte Frontend-Logik in `web/app.js` für diese App (vermeide unnötige Framework-Umbauten)
+- Halte Kommentare knapp und nur dort, wo die Logik nicht sofort ersichtlich ist
 
-## Projektlayout (kanonische Zusammenfassung) 📌
+## Projektstruktur (kanonisch) 📌
 
 - `app.py`: Tornado-Server und API-Routen.
 - `web/`: PWA-Assets.
-- `scripts/`: Datensatz-Download-Helfer.
+- `scripts/`: Dataset-Download-Helfer.
 - `datasets/`: lokaler Datenspeicher.
-- `papers/`: Submodul mit Referenzmaterialien.
+- `papers/`: Untermodul mit Referenzmaterial.
 
 ## Lizenz 📄
 
-Im Repository-Root ist derzeit keine Top-Level-`LICENSE`-Datei vorhanden.
+Eine top-level `LICENSE`-Datei ist im Repository-Root derzeit nicht vorhanden.
 
-Annahmenhinweis: Bis eine Root-Lizenz hinzugefügt wird, gelten Wiederverwendungs-/Weiterverteilungsbedingungen für die Top-Level-Codebasis von OrganoidAgent als nicht spezifiziert.
+Hinweis: Solange keine Top-Level-Lizenz existiert, bleiben die Bedingungen für Wiederverwendung und Weiterverbreitung für den Top-Level-Code von OrganoidAgent unverändert offen.
 
-## Sponsor & Spenden ❤️
 
-- GitHub Sponsors: https://github.com/sponsors/lachlanchen
-- Spenden: https://chat.lazying.art/donate
-- PayPal: https://paypal.me/RongzhouChen
-- Stripe: https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400
+## ❤️ Support
+
+| Donate | PayPal | Stripe |
+| --- | --- | --- |
+| [![Donate](https://camo.githubusercontent.com/24a4914f0b42c6f435f9e101621f1e52535b02c225764b2f6cc99416926004b7/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f446f6e6174652d4c617a79696e674172742d3045413545393f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465)](https://chat.lazying.art/donate) | [![PayPal](https://camo.githubusercontent.com/d0f57e8b016517a4b06961b24d0ca87d62fdba16e18bbdb6aba28e978dc0ea21/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f50617950616c2d526f6e677a686f754368656e2d3030343537433f7374796c653d666f722d7468652d6261646765266c6f676f3d70617970616c266c6f676f436f6c6f723d7768697465)](https://paypal.me/RongzhouChen) | [![Stripe](https://camo.githubusercontent.com/1152dfe04b6943afe3a8d2953676749603fb9f95e24088c92c97a01a897b4942/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f5374726970652d446f6e6174652d3633354246463f7374796c653d666f722d7468652d6261646765266c6f676f3d737472697065266c6f676f436f6c6f723d7768697465)](https://buy.stripe.com/aFadR8gIaflgfQV6T4fw400) |
