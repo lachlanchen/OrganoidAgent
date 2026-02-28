@@ -1,4 +1,4 @@
-**Language:** English (this draft) | Additional language files will be added under `i18n/`.
+**Language:** English (this file) | `i18n/` directory exists for additional language README variants (no duplicated language bars).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/lachlanchen/lachlanchen/main/figs/banner.png" alt="LazyingArt banner" />
@@ -10,10 +10,12 @@
 ![Backend](https://img.shields.io/badge/Backend-Tornado-2c7fb8)
 ![Frontend](https://img.shields.io/badge/Frontend-PWA-0a9396)
 ![Status](https://img.shields.io/badge/Status-Active-success)
+![Data](https://img.shields.io/badge/Data-Local%20first-4c956c)
+![Preview](https://img.shields.io/badge/Preview-Multi--format-f4a261)
 
 OrganoidAgent is a lightweight Tornado backend + Progressive Web App (PWA) frontend for browsing and previewing organoid datasets locally. It supports practical, file-type-aware previews for tables, microscopy images (including TIFF), archives, gzip text files, and AnnData `.h5ad` analysis objects.
 
-## Overview
+## Overview 🔭
 
 The core app is designed for interactive dataset exploration with minimal setup:
 
@@ -24,7 +26,7 @@ The core app is designed for interactive dataset exploration with minimal setup:
 
 This repository also contains adjacent research and utility workspaces (`BioAgent`, `BioAgentUtils`, `references`, `results`, `vendor`, `papers` submodule). The primary runtime described in this README is the top-level `OrganoidAgent` app.
 
-## Features
+## Features ✨
 
 - Local dataset indexing with size and file-count summaries
 - Recursive dataset file listing with inferred file kind
@@ -38,7 +40,18 @@ This repository also contains adjacent research and utility workspaces (`BioAgen
 - PWA frontend with service worker and manifest
 - Basic path sanitization (`safe_dataset_path`) to confine file access under `datasets/`
 
-## Project Structure
+### At a glance
+
+| Area | What it provides |
+|---|---|
+| Dataset discovery | Directory-level dataset listing with file counts and size summaries |
+| File exploration | Recursive listing and kind inference (`image`, `table`, `analysis`, `archive`, etc.) |
+| Rich previews | Tables, TIFF/images, gzip text snippets, archive contents, AnnData summaries |
+| Analysis visuals | `.h5ad` scatter previews from `obsm` embeddings or PCA fallback |
+| Packaging support | Archive listing + extraction endpoint for large compressed bundles |
+| Web UX | Installable PWA with offline-friendly service worker assets |
+
+## Project Structure 🗂️
 
 ```text
 OrganoidAgent/
@@ -66,24 +79,26 @@ OrganoidAgent/
 └─ vendor/                        # external submodules (copilot-sdk, paper-agent, codex)
 ```
 
-## Prerequisites
+## Prerequisites ✅
 
 - Python `3.10+`
 - Recommended environment manager: `conda` or `venv`
 
 Required/optional Python packages inferred from source:
 
-- Required for server startup: `tornado`
-- Optional for full preview functionality: `pandas` (table preview)
-- Optional for full preview functionality: `anndata`, `numpy` (`.h5ad` preview)
-- Optional for full preview functionality: `Pillow` (image rendering)
-- Optional for full preview functionality: `tifffile` (TIFF preview)
-- Optional for data download scripts: `requests`
-- Optional for Kaggle downloads in drug-screening script: `kaggle`
+| Package | Role |
+|---|---|
+| `tornado` | Required for server startup |
+| `pandas` | Optional: table preview support |
+| `anndata`, `numpy` | Optional: `.h5ad` preview and analysis plotting |
+| `Pillow` | Optional: image rendering and generated previews |
+| `tifffile` | Optional: TIFF preview support |
+| `requests` | Optional: dataset download scripts |
+| `kaggle` | Optional: Kaggle downloads in drug-screening script |
 
 Assumption note: there is currently no root `requirements.txt`, `pyproject.toml`, or `environment.yml` for the top-level app.
 
-## Installation
+## Installation ⚙️
 
 ```bash
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
@@ -97,7 +112,7 @@ pip install tornado pandas anndata numpy pillow tifffile requests
 pip install tornado
 ```
 
-## Usage
+## Usage 🚀
 
 ### Quick Start
 
@@ -124,16 +139,18 @@ python scripts/download_drug_screening_datasets.py
 
 Downloaded data lives in `datasets/` (git-ignored).
 
-## API Endpoints
+## API Endpoints 🌐
 
-- `GET /api/datasets`
-- `GET /api/datasets/{name}`
-- `GET /api/datasets/{name}/metadata`
-- `GET /api/category/{datasets|segmentation|features|analysis}`
-- `GET /api/preview?path=<relative_path_under_datasets>`
-- `POST /api/extract?path=<archive_relative_path_under_datasets>`
-- `GET /files/<path>` (raw dataset file serving)
-- `GET /previews/<path>` (generated preview assets)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/datasets` | List datasets with summary stats |
+| `GET` | `/api/datasets/{name}` | List files for one dataset |
+| `GET` | `/api/datasets/{name}/metadata` | Return markdown metadata card |
+| `GET` | `/api/category/{datasets|segmentation|features|analysis}` | Category-oriented file listing |
+| `GET` | `/api/preview?path=<relative_path_under_datasets>` | File-type-aware preview payload |
+| `POST` | `/api/extract?path=<archive_relative_path_under_datasets>` | Extract archive into sibling `_extracted` folder |
+| `GET` | `/files/<path>` | Raw dataset file serving |
+| `GET` | `/previews/<path>` | Generated preview asset serving |
 
 Example preview call:
 
@@ -141,7 +158,7 @@ Example preview call:
 curl "http://localhost:8080/api/preview?path=zenodo_10643410/some_file.h5ad"
 ```
 
-## Configuration
+## Configuration 🧩
 
 Current runtime configuration is intentionally small:
 
@@ -153,7 +170,7 @@ Current runtime configuration is intentionally small:
 
 Assumption note: if you need configurable dataset roots or production server settings, these are not yet exposed in top-level configuration files.
 
-## Examples
+## Examples 🧪
 
 ### Browse category-specific files
 
@@ -178,7 +195,7 @@ python scripts/download_organoid_datasets.py --skip-geo
 python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github --skip-kaggle
 ```
 
-## Development Notes
+## Development Notes 🛠️
 
 - Backend serves frontend static assets from `web/`.
 - Service worker and manifest are in `web/sw.js` and `web/manifest.json`.
@@ -187,7 +204,7 @@ python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github
 - Manual validation (current project guidance): `/api/datasets` returns JSON
 - Manual validation (current project guidance): previews render for CSV/XLSX/images/archives
 
-## Troubleshooting
+## Troubleshooting 🩺
 
 - `ModuleNotFoundError` for preview libraries: install missing packages (`pandas`, `anndata`, `numpy`, `Pillow`, `tifffile`).
 - Empty dataset listing: confirm data exists under `datasets/` and directories are not dot-prefixed.
@@ -196,7 +213,7 @@ python scripts/download_drug_screening_datasets.py --skip-figshare --skip-github
 - GitHub downloader rate limit errors: provide `GITHUB_TOKEN` via env var or CLI flag.
 - Kaggle download not working: install `kaggle` and configure `~/.kaggle/kaggle.json` credentials.
 
-## Roadmap
+## Roadmap 🧭
 
 Potential next improvements (not yet fully implemented in this root app):
 
@@ -206,7 +223,7 @@ Potential next improvements (not yet fully implemented in this root app):
 - Add explicit production run profile (non-debug, reverse-proxy guidance)
 - Expand multilingual documentation under `i18n/`
 
-## Contributing
+## Contributing 🤝
 
 Contributions are welcome. A practical workflow:
 
@@ -221,7 +238,7 @@ Local style conventions in this repository:
 - Keep frontend logic in `web/app.js` for this app (avoid unnecessary framework rewrites)
 - Keep comments concise and only where logic is non-obvious
 
-## Project Layout (Canonical Summary)
+## Project Layout (Canonical Summary) 📌
 
 - `app.py`: Tornado server and API routes.
 - `web/`: PWA assets.
@@ -229,13 +246,13 @@ Local style conventions in this repository:
 - `datasets/`: local data storage.
 - `papers/`: submodule with reference materials.
 
-## License
+## License 📄
 
 No top-level project `LICENSE` file is currently present in this repository root.
 
 Assumption note: until a root license is added, treat reuse/redistribution terms as unspecified for the top-level OrganoidAgent codebase.
 
-## Sponsor & Donate
+## Sponsor & Donate ❤️
 
 - GitHub Sponsors: https://github.com/sponsors/lachlanchen
 - Donate: https://chat.lazying.art/donate
