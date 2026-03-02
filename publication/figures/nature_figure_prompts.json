@@ -1,0 +1,32 @@
+{
+  "prompts": [
+    {
+      "id": "fig1_architecture",
+      "label": "organoidagent_architecture",
+      "order": 1,
+      "aspect_ratio": "16:9",
+      "prompt": "Create a publication-quality clean scientific workflow diagram on a white background. Show an end-to-end pipeline for organoid analysis with five connected modules: Dataset Intake, Type-aware Preview Engine, Single-cell Embedding Summary, Archive Extraction, and Interactive Web Report. Use modern flat vector style, soft blue and gray palette, rounded rectangles, clean arrows, subtle shadows. Add tiny icon-like glyphs only (folder, image, table, scatter plot), but no text labels anywhere in the image. Keep composition balanced and suitable for Nature-style figure panels."
+    },
+    {
+      "id": "fig2_qc",
+      "label": "quality_control_examples",
+      "order": 2,
+      "aspect_ratio": "16:9",
+      "prompt": "Create a four-panel scientific figure layout on white background showing brightfield organoid quality control examples. Panel 1: sharp in-focus organoid edge. Panel 2: defocus blur artifact. Panel 3: uneven illumination vignette. Panel 4: debris contamination particles. Add red and green overlay masks and simple confidence bars, but no text characters. Make it realistic, clean, and publication-ready."
+    },
+    {
+      "id": "fig3_segtrack",
+      "label": "segmentation_tracking_overlay",
+      "order": 3,
+      "aspect_ratio": "16:9",
+      "prompt": "Create a scientific visualization panel showing organoid boundary segmentation and immune-cell trajectory tracking over time. Use grayscale microscopy-like background with a central organoid outlined in cyan contour. Overlay multiple smooth colored trajectories with arrowheads, start/end dots, and small track IDs represented as geometric symbols only, no text characters. Include a compact inset showing matching/association matrix as colored squares without numbers. Publication quality, clean and high contrast."
+    },
+    {
+      "id": "fig4_forecast",
+      "label": "growth_forecasting_curve",
+      "order": 4,
+      "aspect_ratio": "16:9",
+      "prompt": "Create a publication-style forecasting result figure on white background. Show two line-chart style curves (observed vs predicted organoid growth) with confidence ribbons, plus a small residual distribution inset and a calibration scatter inset. Use blue/orange color coding, precise grid lines, minimalistic scientific styling. Do not include any text, numbers, or axis labels."
+    }
+  ]
+}

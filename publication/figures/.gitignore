@@ -1,0 +1,4 @@
+# Keep only final figure assets and shared prompt spec
+*.prompt.txt
+seed_canvas.png
+logs/

@@ -22,18 +22,6 @@
 }
 
 \newcommand{\todoitem}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
-\newcommand{\placeholderfigure}[3]{%
-\begin{figure}[t]
-\centering
-\fbox{%
-\begin{minipage}[c][2.3in][c]{0.9\linewidth}
-\centering
-\textbf{#2}
-\end{minipage}}
-\caption{#3}
-\label{fig:#1}
-\end{figure}
-}
 
 \title{OrganoidAgent: An Agent-Orchestrated Platform for Reproducible\
 Organoid Dataset Analysis and Computational Phenotyping}
@@ -50,7 +38,7 @@ Rongzhou Chen \and Zhenyu Wu \and SHaohua Ma
 \doublespacing
 
 \begin{abstract}
-Organoid experiments increasingly generate large, heterogeneous collections of brightfield images, tabular readouts, and single-cell analysis files, yet many groups still rely on fragmented scripts or manual inspection for quality control and early phenotyping. We present OrganoidAgent, an agent-orchestrated software system for organizing, previewing, and analyzing multimodal organoid datasets in a reproducible workflow. OrganoidAgent combines a lightweight Tornado backend with a progressive web interface and task-specific analysis modules for tabular data preview, archive introspection, TIFF rendering, and single-cell \texttt{.h5ad} summarization with automated two-dimensional embedding visualization. The system exposes standardized APIs for dataset listing, category-based filtering, preview generation, and archive extraction, enabling rapid triage of experimental outcomes before deeper modeling. We describe the architecture, implementation, and an evaluation protocol designed for translational organoid workflows, including quality control gates and pathway-specific analysis entry points. This manuscript provides a submission-ready technical foundation for a Nature-family methods paper and includes explicit placeholders for experiment-specific quantitative benchmarking, biological validation, and ablation analyses.
+Organoid experiments increasingly generate large, heterogeneous collections of brightfield images, tabular readouts, and single-cell analysis files, yet many groups still rely on fragmented scripts or manual inspection for quality control and early phenotyping. We present OrganoidAgent, an agent-orchestrated software system for organizing, previewing, and analyzing multimodal organoid datasets in a reproducible workflow. OrganoidAgent combines a lightweight Tornado backend with a progressive web interface and task-specific analysis modules for tabular data preview, archive introspection, TIFF rendering, and single-cell \texttt{.h5ad} summarization with automated two-dimensional embedding visualization. The system exposes standardized APIs for dataset listing, category-based filtering, preview generation, and archive extraction, enabling rapid triage of experimental outcomes before deeper modeling. We describe the architecture, implementation, and an evaluation protocol designed for translational organoid workflows, including quality control gates and pathway-specific analysis entry points. This manuscript provides a submission-ready technical foundation for a Nature-family methods paper and includes generated illustrative figures plus explicit placeholders for experiment-specific quantitative benchmarking, biological validation, and ablation analyses.
 \end{abstract}
 
 \section*{Main}
@@ -149,26 +137,34 @@ Category-specific API routes separate candidate segmentation inputs (image/archi
 \subsection{Archive-first ingestion}
 When data arrive as compressed bundles, OrganoidAgent can inspect archive contents, preview representative image entries, and extract files into deterministic locations to simplify reproducible preprocessing.
 
-\section{Planned Figures (Placeholders)}
-\placeholderfigure
-{architecture}
-{Figure Placeholder: System architecture}
-{Overview of OrganoidAgent architecture, including dataset intake, API routing, preview cache, and frontend interaction loop.}
+\section{Generated Figures}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/001_fig1_architecture_organoidagent_architecture.png}
+\caption{Generated system architecture figure. The panel illustrates an end-to-end OrganoidAgent workflow from multimodal dataset intake to API-driven preview generation and interactive reporting.}
+\label{fig:architecture_generated}
+\end{figure}
 
-\placeholderfigure
-{qc_examples}
-{Figure Placeholder: Quality control examples}
-{Representative pass/fail quality-control cases for focus blur, illumination drift, and debris artifacts across brightfield frames.}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/002_fig2_qc_quality_control_examples.png}
+\caption{Generated quality-control examples panel for brightfield organoid imaging, showing representative quality regimes and artifact patterns used for triage.}
+\label{fig:qc_generated}
+\end{figure}
 
-\placeholderfigure
-{seg_track}
-{Figure Placeholder: Segmentation and tracking overlays}
-{Example organoid boundary masks and immune-cell trajectories overlaid on time-lapse frames with confidence annotations.}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/003_fig3_segtrack_segmentation_tracking_overlay.png}
+\caption{Generated segmentation and tracking visualization panel with organoid boundary overlays and immune-cell trajectory patterns.}
+\label{fig:segtrack_generated}
+\end{figure}
 
-\placeholderfigure
-{forecast}
-{Figure Placeholder: Growth forecasting}
-{Prediction-versus-observation plots for late-stage organoid outcomes from early time-point features, including confidence intervals.}
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/004_fig4_forecast_growth_forecasting_curve.png}
+\caption{Generated growth-forecasting panel depicting predicted-versus-observed trend behavior and uncertainty structure.}
+\label{fig:forecast_generated}
+\end{figure}
 
 \section{Discussion}
 OrganoidAgent addresses a practical and under-served stage of organoid analysis: rapid, reproducible conversion of heterogeneous raw files into inspectable computational artifacts. The current implementation prioritizes robust file handling, preview generation, and workflow orchestration. This foundation is compatible with future integration of segmentation, cell tracking, phenotyping, and predictive modeling modules.
