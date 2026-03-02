@@ -8,6 +8,8 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{hyperref}
 \usepackage{xcolor}
 \usepackage{lineno}
@@ -20,6 +22,18 @@
 }
 
 \newcommand{\todoitem}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\placeholderfigure}[3]{%
+\begin{figure}[t]
+\centering
+\fbox{%
+\begin{minipage}[c][2.3in][c]{0.9\linewidth}
+\centering
+\textbf{#2}
+\end{minipage}}
+\caption{#3}
+\label{fig:#1}
+\end{figure}
+}
 
 \title{OrganoidAgent: An Agent-Orchestrated Platform for Reproducible\
 Organoid Dataset Analysis and Computational Phenotyping}
@@ -82,6 +96,49 @@ To support publication-grade validation, we define an evaluation framework that 
 \noindent
 \todoitem{Insert quantitative benchmarking results on internal datasets, with confidence intervals and replicate definitions.}
 
+\subsection{Quantitative formulation}
+We define the primary computational objectives explicitly to support reproducibility and ablation studies.
+
+\paragraph{Quality control score.}
+For frame $i$, a normalized quality score is defined as
+\begin{equation}
+Q_i = w_f \hat{f}_i + w_c \hat{c}_i + w_a (1-\hat{a}_i),
+\end{equation}
+where $\hat{f}_i$ is normalized focus sharpness, $\hat{c}_i$ is normalized illumination consistency, $\hat{a}_i$ is artifact burden, and $w_f + w_c + w_a = 1$.
+
+\paragraph{Segmentation accuracy.}
+Given prediction mask $M$ and reference mask $G$, the Dice coefficient is
+\begin{equation}
+\mathrm{Dice}(M,G)=\frac{2|M\cap G|}{|M|+|G|},
+\end{equation}
+and the mean boundary distance is
+\begin{equation}
+E_b=\frac{1}{|\partial G|}\sum_{p\in\partial G}\min_{q\in\partial M}\lVert p-q\rVert_2.
+\end{equation}
+
+\paragraph{Tracking association cost.}
+For a detection $j$ at time $t+1$ and track hypothesis $k$, the assignment cost is
+\begin{equation}
+C_{jk}= \alpha \lVert x_j^{t+1}-\hat{x}_k^{t+1}\rVert_2 + \beta \left(1-\mathrm{IoU}(b_j,b_k)\right),
+\end{equation}
+where $\hat{x}_k^{t+1}$ is Kalman-predicted location and $\mathrm{IoU}(b_j,b_k)$ measures box overlap.
+
+\paragraph{Infiltration phenotype score.}
+With inward and outward boundary crossings $N_{\text{in}}(t)$ and $N_{\text{out}}(t)$, we define
+\begin{equation}
+I=\frac{1}{T}\sum_{t=1}^{T}\frac{N_{\text{in}}(t)-N_{\text{out}}(t)}{\max(1,N_{\text{tot}}(t))}.
+\end{equation}
+
+\paragraph{Growth forecasting objective.}
+For early trajectory features $z_{1:\tau}$ and late endpoint $y_T$, the predictor is
+\begin{equation}
+\hat{y}_T=f_{\theta}(z_{1:\tau}),
+\end{equation}
+optimized by
+\begin{equation}
+\mathcal{L}(\theta)=\frac{1}{N}\sum_{n=1}^{N}\left(y_T^{(n)}-\hat{y}_T^{(n)}\right)^2+\lambda\lVert\theta\rVert_2^2.
+\end{equation}
+
 \section{Representative Use Cases}
 \subsection{Multimodal dataset triage}
 A common entry point is a mixed dataset containing microscopy files, archive bundles, and analysis matrices. OrganoidAgent enables rapid identification of actionable files by category, immediate visual checks on image quality, and lightweight statistical context for single-cell objects.
@@ -91,6 +148,27 @@ Category-specific API routes separate candidate segmentation inputs (image/archi
 
 \subsection{Archive-first ingestion}
 When data arrive as compressed bundles, OrganoidAgent can inspect archive contents, preview representative image entries, and extract files into deterministic locations to simplify reproducible preprocessing.
+
+\section{Planned Figures (Placeholders)}
+\placeholderfigure
+{architecture}
+{Figure Placeholder: System architecture}
+{Overview of OrganoidAgent architecture, including dataset intake, API routing, preview cache, and frontend interaction loop.}
+
+\placeholderfigure
+{qc_examples}
+{Figure Placeholder: Quality control examples}
+{Representative pass/fail quality-control cases for focus blur, illumination drift, and debris artifacts across brightfield frames.}
+
+\placeholderfigure
+{seg_track}
+{Figure Placeholder: Segmentation and tracking overlays}
+{Example organoid boundary masks and immune-cell trajectories overlaid on time-lapse frames with confidence annotations.}
+
+\placeholderfigure
+{forecast}
+{Figure Placeholder: Growth forecasting}
+{Prediction-versus-observation plots for late-stage organoid outcomes from early time-point features, including confidence intervals.}
 
 \section{Discussion}
 OrganoidAgent addresses a practical and under-served stage of organoid analysis: rapid, reproducible conversion of heterogeneous raw files into inspectable computational artifacts. The current implementation prioritizes robust file handling, preview generation, and workflow orchestration. This foundation is compatible with future integration of segmentation, cell tracking, phenotyping, and predictive modeling modules.
