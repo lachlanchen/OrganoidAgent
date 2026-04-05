@@ -31,14 +31,16 @@ Current on-disk state:
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 - `Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 Important:
 
 - `N39_TriRep_DF.lif` was successfully exported
-- `N39_TriRep_DF_2.lif` is currently empty (`0` bytes)
-- because `N39_TriRep_DF_2.lif` is empty, `Data-Yichao-4` has no extracted JPEG outputs at the moment
+- `N39_TriRep_DF_2.lif` was also successfully exported
+- the `*_by_position` folders are regrouped views of the same JPEG planes, organized by monitored position
 
 
 ## Core Unit of Usable Data
@@ -161,13 +163,13 @@ Current files:
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 
 Current extracted totals:
 
 - usable paired samples: `10019`
 - JPEG files in `N39_TriRep_DF_jpeg_all`: `20038`
-- position folders in `N39_TriRep_DF_jpeg_all_by_object`: `13`
+- position folders in `N39_TriRep_DF_jpeg_all_by_position`: `13`
 
 Series breakdown:
 
@@ -220,17 +222,41 @@ Current role:
 Current files:
 
 - `Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
-Current status:
+Current extracted totals:
 
-- file size is `0` bytes
-- extraction failed because the file is empty
-- there are currently no `jpeg_all` or `jpeg_all_by_object` outputs for this folder
+- usable paired samples: `7940`
+- JPEG files in `N39_TriRep_DF_2_jpeg_all`: `15880`
+- position folders in `N39_TriRep_DF_2_jpeg_all_by_position`: `9`
+
+Series breakdown:
+
+| Series | XY | Z | T | Usable pairs |
+| --- | ---: | ---: | ---: | ---: |
+| `Experiment_1 Day_2/Position001` | 512x512 | 16 | 49 | 784 |
+| `Experiment_1 Day_2/Position002` | 512x512 | 22 | 49 | 1078 |
+| `Experiment_1 Day_2/Position003` | 512x512 | 22 | 49 | 1078 |
+| `Experiment_1 Day_2/Position004` | 512x512 | 20 | 49 | 980 |
+| `Experiment_1 Day_2/Position005` | 512x512 | 27 | 49 | 1323 |
+| `Experiment_1 Day_3/Position001` | 512x512 | 38 | 31 | 1178 |
+| `Experiment_1 Day_3/Position003` | 512x512 | 23 | 31 | 713 |
+| `Experiment_1 Day_3/Position004` | 512x512 | 17 | 31 | 527 |
+| `Experiment_1 Day_3/Position005` | 512x512 | 9 | 31 | 279 |
+
+Day-level totals:
+
+| Day | Positions | Usable pairs |
+| --- | ---: | ---: |
+| Day 2 | 5 | 5243 |
+| Day 3 | 4 | 2697 |
 
 Interpretation:
 
 - this folder is correctly split by LIF file
-- but it currently has no usable imaging content until `N39_TriRep_DF_2.lif` is restored or replaced with a valid file
+- it contains a second dynamic monitoring dataset
+- it includes Day 2 and Day 3 time-lapse z-stacks
 
 
 ## What Each Folder Means
@@ -256,7 +282,7 @@ Meaning:
 - `c1`: channel 1, treated here as fluorescence
 
 
-### `N39_TriRep_DF_jpeg_all_by_object`
+### `N39_TriRep_DF_jpeg_all_by_position`
 
 This is the same export regrouped by LIF series name.
 
@@ -266,7 +292,7 @@ Here, “object” is better read as:
 - one fixed field of view
 - one monitored sample stack
 
-So one folder under `*_by_object` corresponds to one monitored position.
+So one folder under `*_by_position` corresponds to one monitored position.
 
 
 ### `Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
@@ -301,18 +327,19 @@ If duplicated content is removed:
 - `Data-Yichao-1`: `5` paired samples, but all duplicated in `Data-Yichao-2`
 - `Data-Yichao-2`: `960` unique dynamic paired samples
 - `Data-Yichao-3/N39_TriRep_DF.lif`: `10019` unique dynamic paired samples
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`: `0` currently usable paired samples because the file is empty
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`: `7940` dynamic paired samples
 
 Total unique paired planes across the current non-empty usable source LIF files:
 
-- `10984`
+- `18924`
 
 Unique series/positions across the usable source files:
 
 - 5 static MUC2 series
 - 6 dynamic Yichao-2 Day-2 positions
 - 13 dynamic positions from `N39_TriRep_DF.lif`
-- total unique series/positions: `24`
+- 9 dynamic positions from `N39_TriRep_DF_2.lif`
+- total unique series/positions: `33`
 
 
 ## What "Replication" Means Here
@@ -380,4 +407,4 @@ If the goal is to learn fluorescence from brightfield with pix2pix:
 - `Data-Yichao-1` is static only and not an independent test set
 - `Data-Yichao-2` contains useful dynamic Day-2 data plus duplicated static content
 - `Data-Yichao-3` is now the first LIF-based split folder and contains the full export of `N39_TriRep_DF.lif`
-- `Data-Yichao-4` is now the second LIF-based split folder and currently contains only the empty `N39_TriRep_DF_2.lif`
+- `Data-Yichao-4` is now the second LIF-based split folder and contains the exported outputs of `N39_TriRep_DF_2.lif`

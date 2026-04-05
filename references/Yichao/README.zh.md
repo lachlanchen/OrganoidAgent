@@ -35,14 +35,16 @@
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 - `Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 重要说明：
 
 - `N39_TriRep_DF.lif` 已成功导出
-- `N39_TriRep_DF_2.lif` 当前是空文件（`0` 字节）
-- 因为 `N39_TriRep_DF_2.lif` 是空文件，所以 `Data-Yichao-4` 目前没有成功生成任何 JPEG 导出目录
+- `N39_TriRep_DF_2.lif` 也已成功导出
+- `*_by_position` 目录是对同一批 JPEG 的重组视图，按被监测的 position 进行整理
 
 
 ## 可用数据的基本单位
@@ -165,13 +167,13 @@ series 结构如下：
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 
 当前导出总量：
 
 - 可用配对数：`10019`
 - `N39_TriRep_DF_jpeg_all` 中 JPEG 总数：`20038`
-- `N39_TriRep_DF_jpeg_all_by_object` 中 position 文件夹数：`13`
+- `N39_TriRep_DF_jpeg_all_by_position` 中 position 文件夹数：`13`
 
 series 明细：
 
@@ -224,17 +226,41 @@ series 明细：
 当前文件：
 
 - `Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
-当前状态：
+当前导出总量：
 
-- 文件大小为 `0` 字节
-- 导出失败，因为原始文件为空
-- 目前没有 `jpeg_all` 或 `jpeg_all_by_object` 目录
+- 可用配对数：`7940`
+- `N39_TriRep_DF_2_jpeg_all` 中 JPEG 总数：`15880`
+- `N39_TriRep_DF_2_jpeg_all_by_position` 中 position 文件夹数：`9`
+
+series 明细：
+
+| Series | XY | Z | T | 可用配对数 |
+| --- | ---: | ---: | ---: | ---: |
+| `Experiment_1 Day_2/Position001` | 512x512 | 16 | 49 | 784 |
+| `Experiment_1 Day_2/Position002` | 512x512 | 22 | 49 | 1078 |
+| `Experiment_1 Day_2/Position003` | 512x512 | 22 | 49 | 1078 |
+| `Experiment_1 Day_2/Position004` | 512x512 | 20 | 49 | 980 |
+| `Experiment_1 Day_2/Position005` | 512x512 | 27 | 49 | 1323 |
+| `Experiment_1 Day_3/Position001` | 512x512 | 38 | 31 | 1178 |
+| `Experiment_1 Day_3/Position003` | 512x512 | 23 | 31 | 713 |
+| `Experiment_1 Day_3/Position004` | 512x512 | 17 | 31 | 527 |
+| `Experiment_1 Day_3/Position005` | 512x512 | 9 | 31 | 279 |
+
+按天汇总：
+
+| Day | Position 数 | 可用配对数 |
+| --- | ---: | ---: |
+| Day 2 | 5 | 5243 |
+| Day 3 | 4 | 2697 |
 
 解释：
 
 - 这个目录已经按 LIF 文件正确拆分
-- 但在 `N39_TriRep_DF_2.lif` 被恢复为有效文件之前，这里没有可用成像内容
+- 它包含第二个动态 monitoring 数据集
+- 包含 Day 2 与 Day 3 的 time-lapse z-stack
 
 
 ## 这些文件夹到底表示什么
@@ -260,7 +286,7 @@ series 明细：
 - `c1`：第 1 个通道，这里视为荧光
 
 
-### `N39_TriRep_DF_jpeg_all_by_object`
+### `N39_TriRep_DF_jpeg_all_by_position`
 
 这是与上面相同的数据，但按 LIF series 名称重新分组。
 
@@ -270,7 +296,7 @@ series 明细：
 - 一个固定视野
 - 一个被持续监测的 sample stack
 
-也就是说，`*_by_object` 下的一个子目录就是一个被持续监测的 position。
+也就是说，`*_by_position` 下的一个子目录就是一个被持续监测的 position。
 
 
 ### `Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
@@ -304,18 +330,19 @@ series 明细：
 - `Data-Yichao-1`：`5` 个配对样本，但全部在 `Data-Yichao-2` 中重复
 - `Data-Yichao-2`：`960` 个唯一动态配对样本
 - `Data-Yichao-3/N39_TriRep_DF.lif`：`10019` 个唯一动态配对样本
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`：当前 `0` 个可用配对样本，因为文件为空
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`：`7940` 个动态配对样本
 
 因此，当前非空且可用的原始 LIF 来源中的唯一配对平面总数为：
 
-- `10984`
+- `18924`
 
 这些可用原始来源中的唯一 series/position 数量为：
 
 - 5 个静态 MUC2 series
 - 6 个 Yichao-2 Day-2 动态 position
 - `N39_TriRep_DF.lif` 中的 13 个动态 position
-- 总计 `24`
+- `N39_TriRep_DF_2.lif` 中的 9 个动态 position
+- 总计 `33`
 
 
 ## 这里的“重复”或“replication”该如何理解
@@ -383,4 +410,4 @@ Yichao-2 的动态数据与 `N39_TriRep_DF.lif` 的空间采样不同：
 - `Data-Yichao-1` 只有静态数据，而且不适合作为独立测试集
 - `Data-Yichao-2` 包含有价值的动态 Day-2 数据，但也混有重复静态内容
 - `Data-Yichao-3` 现在是第一个按 LIF 拆分后的目录，包含 `N39_TriRep_DF.lif` 的完整导出结果
-- `Data-Yichao-4` 现在是第二个按 LIF 拆分后的目录，目前只包含空的 `N39_TriRep_DF_2.lif`
+- `Data-Yichao-4` 现在是第二个按 LIF 拆分后的目录，包含 `N39_TriRep_DF_2.lif` 的导出结果
