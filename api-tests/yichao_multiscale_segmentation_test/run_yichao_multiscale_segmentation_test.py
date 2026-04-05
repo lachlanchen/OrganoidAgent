@@ -115,6 +115,14 @@ def load_rgb_gray(path: Path) -> tuple[np.ndarray, np.ndarray]:
     return rgb, gray
 
 
+def paired_channel_path(path: Path, target_channel: str) -> Path:
+    paired_name = re.sub(r"_c\d(\.[^.]+)$", rf"_{target_channel}\1", path.name)
+    paired_path = path.with_name(paired_name)
+    if paired_path == path or not paired_path.exists():
+        raise FileNotFoundError(f"Could not resolve paired channel {target_channel} for {path}")
+    return paired_path
+
+
 def focus_score(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_32F).var())
 
@@ -172,12 +180,21 @@ def to_thumb(image: np.ndarray, thumb_h: int = 240) -> np.ndarray:
     return cv2.resize(image, (width, thumb_h), interpolation=cv2.INTER_AREA)
 
 
-def render_comparison_panel(source_rgb: np.ndarray, signal: np.ndarray, overlay: np.ndarray, instance_rgb: np.ndarray) -> np.ndarray:
+def render_comparison_panel(
+    brightfield_rgb: np.ndarray,
+    fluorescence_rgb: np.ndarray,
+    signal: np.ndarray,
+    overlay_on_brightfield: np.ndarray,
+    overlay_on_fluorescence: np.ndarray,
+    instance_rgb: np.ndarray,
+) -> np.ndarray:
     panels: list[np.ndarray] = []
     items = [
-        ("Brightfield", source_rgb),
+        ("Brightfield", brightfield_rgb),
+        ("Fluorescence", fluorescence_rgb),
         ("Debug Signal", cv2.cvtColor(signal, cv2.COLOR_GRAY2RGB)),
-        ("Overlay On Brightfield", overlay),
+        ("Overlay On Brightfield", overlay_on_brightfield),
+        ("Overlay On Fluorescence", overlay_on_fluorescence),
         ("Instance RGB", instance_rgb),
     ]
     for title, image in items:
@@ -193,8 +210,8 @@ def render_comparison_panel(source_rgb: np.ndarray, signal: np.ndarray, overlay:
             cv2.LINE_AA,
         )
         panels.append(panel)
-    top = np.concatenate(panels[:2], axis=1)
-    bottom = np.concatenate(panels[2:], axis=1)
+    top = np.concatenate(panels[:3], axis=1)
+    bottom = np.concatenate(panels[3:], axis=1)
     return np.concatenate([top, bottom], axis=0)
 
 
@@ -220,6 +237,8 @@ def run_one_dataset(
     dataset_out_dir.mkdir(parents=True, exist_ok=False)
 
     source_rgb, gray = load_rgb_gray(selected_path)
+    fluorescence_path = paired_channel_path(selected_path, "c0")
+    fluorescence_rgb, _ = load_rgb_gray(fluorescence_path)
     signal, support, grad_norm = module.compute_hybrid_signal(gray)
 
     candidates = []
@@ -277,34 +296,48 @@ def run_one_dataset(
     kept = module.merge_candidates(candidates)
     label_mask, color_mask = module.build_outputs(source_rgb, kept)
     overlay = cv2.addWeighted(source_rgb, 0.72, color_mask, 0.55, 0)
+    fluorescence_overlay = cv2.addWeighted(fluorescence_rgb, 0.72, color_mask, 0.55, 0)
     edges = cv2.Canny((label_mask > 0).astype(np.uint8) * 255, 50, 150)
     overlay[edges > 0] = (255, 0, 0)
-    panel = render_comparison_panel(source_rgb, signal, overlay, color_mask)
+    fluorescence_overlay[edges > 0] = (255, 0, 0)
+    panel = render_comparison_panel(
+        source_rgb,
+        fluorescence_rgb,
+        signal,
+        overlay,
+        fluorescence_overlay,
+        color_mask,
+    )
 
     source_png = dataset_out_dir / "source.png"
     brightfield_png = dataset_out_dir / "brightfield_input.png"
+    fluorescence_png = dataset_out_dir / "fluorescence_reference.png"
     signal_png = dataset_out_dir / "signal.png"
     support_png = dataset_out_dir / "support.png"
     mask_png = dataset_out_dir / "multiscale_mask_16bit.png"
     instance_png = dataset_out_dir / "multiscale_instance_rgb.png"
     overlay_png = dataset_out_dir / "multiscale_overlay.png"
     overlay_brightfield_png = dataset_out_dir / "multiscale_overlay_on_brightfield.png"
+    overlay_fluorescence_png = dataset_out_dir / "multiscale_overlay_on_fluorescence.png"
     panel_png = dataset_out_dir / "comparison_panel.png"
     stats_json = dataset_out_dir / "multiscale_stats.json"
 
     Image.fromarray(source_rgb).save(source_png)
     Image.fromarray(source_rgb).save(brightfield_png)
+    Image.fromarray(fluorescence_rgb).save(fluorescence_png)
     Image.fromarray(signal).save(signal_png)
     Image.fromarray(support).save(support_png)
     cv2.imwrite(str(mask_png), label_mask.astype(np.uint16))
     Image.fromarray(color_mask).save(instance_png)
     Image.fromarray(overlay).save(overlay_png)
     Image.fromarray(overlay).save(overlay_brightfield_png)
+    Image.fromarray(fluorescence_overlay).save(overlay_fluorescence_png)
     Image.fromarray(panel).save(panel_png)
 
     stats = {
         "dataset": spec.name,
         "selected_input_image": str(selected_path),
+        "paired_fluorescence_image": str(fluorescence_path),
         "selection": selection_info,
         "selected_channel": "c1_brightfield",
         "segmentation_policy": "multiscale_cellpose_with_signal_recovery_fallback",
@@ -315,12 +348,14 @@ def run_one_dataset(
         "mask_count": int(label_mask.max()),
         "source_png": str(source_png),
         "brightfield_input_png": str(brightfield_png),
+        "fluorescence_reference_png": str(fluorescence_png),
         "signal_png": str(signal_png),
         "support_png": str(support_png),
         "mask_16bit_png": str(mask_png),
         "instance_rgb_png": str(instance_png),
         "overlay_png": str(overlay_png),
         "overlay_on_brightfield_png": str(overlay_brightfield_png),
+        "overlay_on_fluorescence_png": str(overlay_fluorescence_png),
         "comparison_panel_png": str(panel_png),
         "branch_summaries": branch_summaries,
         "merged_candidates": [

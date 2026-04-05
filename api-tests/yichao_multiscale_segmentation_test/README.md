@@ -31,6 +31,7 @@ api-tests/yichao_multiscale_segmentation_test/run_yichao_multiscale_segmentation
 Per-dataset outputs include:
 
 - `brightfield_input.png`
+- `fluorescence_reference.png`
 - `source.png`
 - `signal.png`
 - `support.png`
@@ -38,6 +39,7 @@ Per-dataset outputs include:
 - `multiscale_instance_rgb.png`
 - `multiscale_overlay.png`
 - `multiscale_overlay_on_brightfield.png`
+- `multiscale_overlay_on_fluorescence.png`
 - `comparison_panel.png`
 - `multiscale_stats.json`
 
