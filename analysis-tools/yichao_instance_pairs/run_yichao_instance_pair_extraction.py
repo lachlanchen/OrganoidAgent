@@ -85,6 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--gpu", choices=("auto", "true", "false"), default="auto")
     parser.add_argument("--progress-every", type=int, default=50)
+    parser.add_argument("--max-new-images", type=int, default=None)
     return parser.parse_args()
 
 
@@ -440,6 +441,7 @@ def main() -> int:
         "image_count_target": len(work_items),
         "skip_existing": skip_existing,
         "gpu_mode": args.gpu,
+        "max_new_images": args.max_new_images,
         "policy": "multiscale_cellpose_with_signal_recovery_fallback",
         "brightfield_channel": "c1",
         "fluorescence_channel": "c0",
@@ -455,6 +457,8 @@ def main() -> int:
     total_instances = 0
     failed = 0
     t0 = time.perf_counter()
+    processed_items = 0
+    stop_reason: str | None = None
 
     write_json(
         progress_path,
@@ -473,6 +477,7 @@ def main() -> int:
     )
 
     for index, work_item in enumerate(work_items, start=1):
+        processed_items = index
         try:
             status, instance_count = segment_one_image(output_root, work_item, module, model, skip_existing=skip_existing)
             if status == "processed":
@@ -485,11 +490,18 @@ def main() -> int:
             image_stem = work_item.brightfield_path.stem
             reset_partial_outputs(build_output_paths(output_root, work_item.dataset, work_item.object_name, image_stem))
             write_failure_record(output_root, work_item, exc)
-        if index % max(1, args.progress_every) == 0 or index == len(work_items):
+        reached_chunk_limit = (
+            args.max_new_images is not None
+            and processed >= args.max_new_images
+            and index < len(work_items)
+        )
+        if reached_chunk_limit:
+            stop_reason = "max_new_images"
+        if index % max(1, args.progress_every) == 0 or index == len(work_items) or reached_chunk_limit:
             elapsed = max(1e-6, time.perf_counter() - t0)
             rate = index / elapsed
             progress_payload = {
-                "status": "running",
+                "status": "partial" if reached_chunk_limit else "running",
                 "updated_at": datetime.now().isoformat(timespec="seconds"),
                 "output_root": str(output_root),
                 "target_images": len(work_items),
@@ -501,6 +513,8 @@ def main() -> int:
                 "elapsed_seconds": round(elapsed, 3),
                 "images_per_second": round(rate, 3),
             }
+            if stop_reason is not None:
+                progress_payload["stop_reason"] = stop_reason
             write_json(progress_path, progress_payload)
             print(
                 json.dumps(
@@ -516,22 +530,30 @@ def main() -> int:
                 ),
                 flush=True,
             )
+        if reached_chunk_limit:
+            break
+
+    completed_all_items = processed_items >= len(work_items)
+    summary_status = "finished" if completed_all_items else "partial"
 
     summary = {
+        "status": summary_status,
         "finished_at": datetime.now().isoformat(timespec="seconds"),
         "output_root": str(output_root),
         "target_images": len(work_items),
+        "processed_items": processed_items,
         "processed_new_images": processed,
         "skipped_existing_images": skipped,
         "instances_written_for_new_images": total_instances,
         "failed_images": failed,
         "elapsed_seconds": round(time.perf_counter() - t0, 3),
     }
+    if stop_reason is not None:
+        summary["stop_reason"] = stop_reason
     write_json(output_root / "run_summary.json", summary)
     write_json(
         progress_path,
         {
-            "status": "finished",
             **summary,
         },
     )
