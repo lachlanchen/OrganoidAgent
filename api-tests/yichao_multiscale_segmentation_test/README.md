@@ -1,6 +1,6 @@
 # Yichao Multiscale Segmentation Test
 
-This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one selected brightfield `c0` image from each Yichao dataset:
+This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one selected brightfield `c1` image from each Yichao dataset:
 
 - `Data-Yichao-1`
 - `Data-Yichao-2`
