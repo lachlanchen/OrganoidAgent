@@ -9,6 +9,10 @@ references/*
 !references/*.md
 !references/Yichao/
 !references/Yichao/*.md
+!references/experiment_design/
+!references/experiment_design/*.md
+!references/deo_segmentation_metric_method_tex/
+!references/deo_segmentation_metric_method_tex/**
 segmentation/
 selected_data/
 AiResult.pptx
