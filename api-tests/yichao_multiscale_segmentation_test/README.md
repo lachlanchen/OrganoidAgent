@@ -24,12 +24,14 @@ api-tests/yichao_multiscale_segmentation_test/run_yichao_multiscale_segmentation
 
 Per-dataset outputs include:
 
+- `brightfield_input.png`
 - `source.png`
 - `signal.png`
 - `support.png`
 - `multiscale_mask_16bit.png`
 - `multiscale_instance_rgb.png`
 - `multiscale_overlay.png`
+- `multiscale_overlay_on_brightfield.png`
 - `comparison_panel.png`
 - `multiscale_stats.json`
 

@@ -174,9 +174,9 @@ def to_thumb(image: np.ndarray, thumb_h: int = 240) -> np.ndarray:
 def render_comparison_panel(source_rgb: np.ndarray, signal: np.ndarray, overlay: np.ndarray, instance_rgb: np.ndarray) -> np.ndarray:
     panels: list[np.ndarray] = []
     items = [
-        ("Source", source_rgb),
+        ("Brightfield", source_rgb),
         ("Signal", cv2.cvtColor(signal, cv2.COLOR_GRAY2RGB)),
-        ("Overlay", overlay),
+        ("Overlay On Brightfield", overlay),
         ("Instance RGB", instance_rgb),
     ]
     for title, image in items:
@@ -268,36 +268,43 @@ def run_one_dataset(
     panel = render_comparison_panel(source_rgb, signal, overlay, color_mask)
 
     source_png = dataset_out_dir / "source.png"
+    brightfield_png = dataset_out_dir / "brightfield_input.png"
     signal_png = dataset_out_dir / "signal.png"
     support_png = dataset_out_dir / "support.png"
     mask_png = dataset_out_dir / "multiscale_mask_16bit.png"
     instance_png = dataset_out_dir / "multiscale_instance_rgb.png"
     overlay_png = dataset_out_dir / "multiscale_overlay.png"
+    overlay_brightfield_png = dataset_out_dir / "multiscale_overlay_on_brightfield.png"
     panel_png = dataset_out_dir / "comparison_panel.png"
     stats_json = dataset_out_dir / "multiscale_stats.json"
 
     Image.fromarray(source_rgb).save(source_png)
+    Image.fromarray(source_rgb).save(brightfield_png)
     Image.fromarray(signal).save(signal_png)
     Image.fromarray(support).save(support_png)
     cv2.imwrite(str(mask_png), label_mask.astype(np.uint16))
     Image.fromarray(color_mask).save(instance_png)
     Image.fromarray(overlay).save(overlay_png)
+    Image.fromarray(overlay).save(overlay_brightfield_png)
     Image.fromarray(panel).save(panel_png)
 
     stats = {
         "dataset": spec.name,
         "selected_input_image": str(selected_path),
         "selection": selection_info,
+        "selected_channel": "c0_brightfield",
         "stage": spec.stage,
         "diameters_px": list(spec.diameters),
         "image_shape": [int(source_rgb.shape[1]), int(source_rgb.shape[0])],
         "mask_count": int(label_mask.max()),
         "source_png": str(source_png),
+        "brightfield_input_png": str(brightfield_png),
         "signal_png": str(signal_png),
         "support_png": str(support_png),
         "mask_16bit_png": str(mask_png),
         "instance_rgb_png": str(instance_png),
         "overlay_png": str(overlay_png),
+        "overlay_on_brightfield_png": str(overlay_brightfield_png),
         "comparison_panel_png": str(panel_png),
         "branch_summaries": branch_summaries,
         "merged_candidates": [
