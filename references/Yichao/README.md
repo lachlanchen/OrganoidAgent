@@ -1,57 +1,57 @@
 # Yichao Dataset Structure for Brightfield-to-Fluorescence Pix2pix
 
-This note documents the usable paired data in:
+This note documents the current Yichao dataset layout in:
 
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-2`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-3`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-4`
 
-The intended supervised task is:
+The supervised mapping used in this repo is:
 
 - input: `c0` brightfield
 - target: `c1` fluorescence
 
-The repository already assumes this mapping in:
+This assumption is already used in:
 
 - `BioAgentUtils/prepare_yichao_pairs_to_npy.py`
 - `BioAgentUtils/train_pix2pix_yichao.py`
 
 
-## Important Split Note
+## Current Split
 
-The original dynamic source file was:
+The split is now done **by raw LIF file first**, not by day.
+
+Current meaning of the folders:
+
+- `Data-Yichao-3` = data from `N39_TriRep_DF.lif`
+- `Data-Yichao-4` = data from `N39_TriRep_DF_2.lif`
+
+Current on-disk state:
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`
 
-That original Leica LIF was **not** physically rewritten into two new LIF files. Instead, the extracted JPEG exports were reorganized as:
+Important:
 
-- `Data-Yichao-3`: Day 2 + Day 3 extracted subset
-- `Data-Yichao-4`: Day 4 extracted subset
-
-For convenience, the same original raw source files are mirrored in both folders:
-
-- `N39_TriRep_DF.lif`
-- `N39_TriRep_DF_2.lif`
-
-So:
-
-- the JPEG exports are split
-- the raw `.lif` file itself is still the same original source
-- `Data-Yichao-3` and `Data-Yichao-4` must not be double-counted as independent raw LIF acquisitions
+- `N39_TriRep_DF.lif` was successfully exported
+- `N39_TriRep_DF_2.lif` is currently empty (`0` bytes)
+- because `N39_TriRep_DF_2.lif` is empty, `Data-Yichao-4` has no extracted JPEG outputs at the moment
 
 
 ## Core Unit of Usable Data
 
-For pix2pix, the useful supervised unit is:
+For pix2pix, the usable supervised unit is:
 
 - one paired 2D image plane at fixed `series/position`, `z`, and `t`
 - brightfield `c0` paired with fluorescence `c1`
 
-For each LIF series:
+For one LIF series:
 
 - usable paired samples = `z_count * time_count`
-- total exported JPEG files = `z_count * time_count * 2`
+- exported JPEG files = `z_count * time_count * 2`
 
 because each `(t, z)` plane is exported for both channels.
 
@@ -146,92 +146,30 @@ Totals:
 Interpretation:
 
 - this is a mixed file
-- it contains both the static MUC2 images and the dynamic Day-2 stacks
-- for model development, the unique part is mainly the 6 Day-2 positions
+- it contains both static MUC2 images and dynamic Day-2 stacks
+- the unique part for training is mainly the 6 Day-2 positions
 
 
 ### Data-Yichao-3
 
-Current folder role:
+Current role:
 
-- extracted subset from the original `N39_TriRep_DF.lif`
-- now holds Day 2 and Day 3 only
+- first LIF-based split folder
+- contains data from `N39_TriRep_DF.lif` only
 
-Files present:
+Current files:
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_2.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
 
-`N39_TriRep_DF_2.lif`:
+Current extracted totals:
 
-- empty file
-- size `0` bytes
-- unusable
+- usable paired samples: `10019`
+- JPEG files in `N39_TriRep_DF_jpeg_all`: `20038`
+- position folders in `N39_TriRep_DF_jpeg_all_by_object`: `13`
 
-Current extracted subset:
-
-| Day | Positions | Usable pairs | Total JPEG files |
-| --- | ---: | ---: | ---: |
-| Day 2 | 3 | 2296 | 4592 |
-| Day 3 | 5 | 4459 | 8918 |
-
-Current totals in `Data-Yichao-3`:
-
-- positions: `8`
-- usable paired samples: `6755`
-- total JPEG files in `N39_TriRep_DF_jpeg_all`: `13510`
-
-Interpretation:
-
-- this is the Day 2 + Day 3 extracted monitoring subset
-- it is the larger side of the split
-- it comes from the same original raw LIF source that also underlies `Data-Yichao-4`
-
-
-### Data-Yichao-4
-
-Current folder role:
-
-- extracted subset from the original `N39_TriRep_DF.lif`
-- now holds Day 4 only
-
-Files present:
-
-- `Data-Yichao-4/N39_TriRep_DF.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_jpeg_all_by_object`
-
-Current extracted subset:
-
-| Day | Positions | Usable pairs | Total JPEG files |
-| --- | ---: | ---: | ---: |
-| Day 4 | 5 | 3264 | 6528 |
-
-Current totals in `Data-Yichao-4`:
-
-- positions: `5`
-- usable paired samples: `3264`
-- total JPEG files in `N39_TriRep_DF_jpeg_all`: `6528`
-
-Interpretation:
-
-- this is the Day 4 extracted monitoring subset
-- it is useful as a held-out day-shift set or as an additional training block
-- it comes from the same original raw LIF source that also underlies `Data-Yichao-3`
-
-
-### Original Dynamic Source Behind Data-Yichao-3 and Data-Yichao-4
-
-The original unsplit dynamic source `N39_TriRep_DF.lif` contained 13 dynamic series total:
-
-- 3 positions on Day 2
-- 5 positions on Day 3
-- 5 positions on Day 4
-
-Original source breakdown:
+Series breakdown:
 
 | Series | XY | Z | T | Usable pairs |
 | --- | ---: | ---: | ---: | ---: |
@@ -249,7 +187,7 @@ Original source breakdown:
 | `Experiment_1 Day_4/Position004` | 512x512 | 23 | 32 | 736 |
 | `Experiment_1 Day_4/Position005` | 512x512 | 18 | 32 | 576 |
 
-Original day-level totals:
+Day-level totals:
 
 | Day | Positions | Usable pairs |
 | --- | ---: | ---: |
@@ -266,9 +204,33 @@ Acquisition structure:
 - Day 4 z step: about `2.000 um`
 - time step: about `1800-1805 s` or about `30 min`
 
-Original total usable paired samples from this single source:
+Interpretation:
 
-- `10019`
+- this is the main dynamic monitoring dataset
+- it contains time-lapse z-stacks across Day 2, Day 3, and Day 4
+
+
+### Data-Yichao-4
+
+Current role:
+
+- second LIF-based split folder
+- contains data from `N39_TriRep_DF_2.lif` only
+
+Current files:
+
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`
+
+Current status:
+
+- file size is `0` bytes
+- extraction failed because the file is empty
+- there are currently no `jpeg_all` or `jpeg_all_by_object` outputs for this folder
+
+Interpretation:
+
+- this folder is correctly split by LIF file
+- but it currently has no usable imaging content until `N39_TriRep_DF_2.lif` is restored or replaced with a valid file
 
 
 ## What Each Folder Means
@@ -282,15 +244,15 @@ Each file is one 2D plane from one position at one timepoint and one z-depth.
 Example:
 
 ```text
-00_Experiment_1_Day_3_Position002_t017_z006_c1.jpg
+00_Experiment_1_Day_2_Position001_t040_z025_c1.jpg
 ```
 
 Meaning:
 
 - `00`: series index inside the LIF export
-- `Experiment_1_Day_3_Position002`: one monitored position / field of view
-- `t017`: timepoint 17
-- `z006`: z-plane 6
+- `Experiment_1_Day_2_Position001`: one monitored position / field of view
+- `t040`: timepoint 40
+- `z025`: z-plane 25
 - `c1`: channel 1, treated here as fluorescence
 
 
@@ -332,29 +294,24 @@ The cleaner equivalent export is:
 - `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
 
 
-## Unique Usable Data Across All Yichao LIFs
+## Unique Usable Data Across the Underlying Source Files
 
 If duplicated content is removed:
 
 - `Data-Yichao-1`: `5` paired samples, but all duplicated in `Data-Yichao-2`
 - `Data-Yichao-2`: `960` unique dynamic paired samples
-- original `N39_TriRep_DF.lif` source: `10019` unique dynamic paired samples
+- `Data-Yichao-3/N39_TriRep_DF.lif`: `10019` unique dynamic paired samples
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`: `0` currently usable paired samples because the file is empty
 
-Because `Data-Yichao-3` and `Data-Yichao-4` are only a folder-level split of that same original source:
-
-- `Data-Yichao-3`: `6755` extracted pairs
-- `Data-Yichao-4`: `3264` extracted pairs
-- `6755 + 3264 = 10019`
-
-Total unique paired planes across the underlying non-empty source LIF files:
+Total unique paired planes across the current non-empty usable source LIF files:
 
 - `10984`
 
-Unique series/positions across the underlying sources:
+Unique series/positions across the usable source files:
 
 - 5 static MUC2 series
 - 6 dynamic Yichao-2 Day-2 positions
-- 13 dynamic positions from the original `N39_TriRep_DF.lif`
+- 13 dynamic positions from `N39_TriRep_DF.lif`
 - total unique series/positions: `24`
 
 
@@ -393,22 +350,17 @@ Why:
 The cleanest current baseline is:
 
 - train first on `Data-Yichao-3`
-- use `Data-Yichao-4` as a held-out day-shift evaluation set, or as a second-stage training extension
-
-This now has a clearer meaning than the old unsplit layout:
-
-- `Data-Yichao-3`: Day 2 + Day 3
-- `Data-Yichao-4`: Day 4
+- treat `Data-Yichao-4` as unavailable until `N39_TriRep_DF_2.lif` is restored
 
 
-### Should Yichao-2 be mixed with Data-Yichao-3/4?
+### Should Yichao-2 be mixed with Data-Yichao-3?
 
 Not immediately.
 
-Yichao-2 dynamic data and the `N39_TriRep_DF` source are at different spatial sampling:
+Yichao-2 dynamic data and `N39_TriRep_DF.lif` are at different spatial sampling:
 
 - Yichao-2 dynamic: `1024 x 1024`, about `0.568 um/pixel`
-- original `N39_TriRep_DF` source: `512 x 512`, about `1.137 um/pixel`
+- `N39_TriRep_DF.lif`: `512 x 512`, about `1.137 um/pixel`
 
 That means:
 
@@ -417,7 +369,7 @@ That means:
 
 Best practice:
 
-- first build a clean baseline on the split `Data-Yichao-3` / `Data-Yichao-4`
+- first build a clean baseline on `Data-Yichao-3`
 - then add Yichao-2 dynamic positions only after deciding how to normalize physical scale
 
 
@@ -427,6 +379,5 @@ If the goal is to learn fluorescence from brightfield with pix2pix:
 
 - `Data-Yichao-1` is static only and not an independent test set
 - `Data-Yichao-2` contains useful dynamic Day-2 data plus duplicated static content
-- `Data-Yichao-3` now holds the Day 2 + Day 3 extracted subset from the original `N39_TriRep_DF.lif`
-- `Data-Yichao-4` now holds the Day 4 extracted subset from that same original source
-- the raw `N39_TriRep_DF.lif` mirrored in both folders is still one shared source file, not two separate acquisitions
+- `Data-Yichao-3` is now the first LIF-based split folder and contains the full export of `N39_TriRep_DF.lif`
+- `Data-Yichao-4` is now the second LIF-based split folder and currently contains only the empty `N39_TriRep_DF_2.lif`

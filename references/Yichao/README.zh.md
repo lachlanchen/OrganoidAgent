@@ -4,45 +4,45 @@
 
 - `references/Yichao/README.md`
 
-本文档整理以下目录中的可用配对数据：
+本文档整理以下目录中的当前 Yichao 数据布局：
 
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-2`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-3`
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-4`
 
-当前监督任务定义为：
+本仓库当前采用的监督映射是：
 
 - 输入：`c0` 明场
 - 目标：`c1` 荧光
 
-仓库中的以下脚本已经默认采用这一映射：
+这个假设已经被以下脚本使用：
 
 - `BioAgentUtils/prepare_yichao_pairs_to_npy.py`
 - `BioAgentUtils/train_pix2pix_yichao.py`
 
 
-## 重要的拆分说明
+## 当前拆分方式
 
-原始动态来源文件是：
+现在的拆分方式是 **先按原始 LIF 文件拆分**，不是按 day 拆分。
+
+当前目录含义：
+
+- `Data-Yichao-3` = `N39_TriRep_DF.lif` 对应的数据
+- `Data-Yichao-4` = `N39_TriRep_DF_2.lif` 对应的数据
+
+当前磁盘状态：
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`
 
-这个原始 Leica LIF 文件并没有被真正改写成两个新的 LIF 文件。实际做的是把已经导出的 JPEG 数据重新整理为：
+重要说明：
 
-- `Data-Yichao-3`：保留 Day 2 + Day 3 的导出子集
-- `Data-Yichao-4`：拆出 Day 4 的导出子集
-
-为了使用方便，这两个目录中都保留了同一份原始源文件镜像：
-
-- `N39_TriRep_DF.lif`
-- `N39_TriRep_DF_2.lif`
-
-因此：
-
-- 被拆分的是 JPEG 导出结果
-- 原始 `.lif` 仍然是同一个源文件
-- `Data-Yichao-3` 和 `Data-Yichao-4` 不能被当成两个独立的原始 LIF 采集来重复计数
+- `N39_TriRep_DF.lif` 已成功导出
+- `N39_TriRep_DF_2.lif` 当前是空文件（`0` 字节）
+- 因为 `N39_TriRep_DF_2.lif` 是空文件，所以 `Data-Yichao-4` 目前没有成功生成任何 JPEG 导出目录
 
 
 ## 可用数据的基本单位
@@ -52,7 +52,7 @@
 - 在固定 `series/position`、`z`、`t` 下的一对 2D 图像
 - 即明场 `c0` 与荧光 `c1` 的同位配对
 
-对每个 LIF series 来说：
+对一个 LIF series 而言：
 
 - 可用配对样本数 = `z_count * time_count`
 - 导出的 JPEG 总数 = `z_count * time_count * 2`
@@ -145,97 +145,35 @@ series 结构如下：
 统计：
 
 - 包含静态重复图像时，总可用配对数：`965`
-- 扣除 Y1 重复后，唯一的动态配对数：`960`
+- 扣除 Y1 重复后，唯一动态配对数：`960`
 
 解释：
 
 - 这是一个混合型文件
 - 同时包含静态 MUC2 图像与动态 Day-2 stack
-- 对模型开发真正新增的内容，主要是这 6 个 Day-2 动态 position
+- 对训练真正新增的内容，主要是这 6 个 Day-2 动态 position
 
 
 ### Data-Yichao-3
 
-当前目录角色：
+当前角色：
 
-- 来自原始 `N39_TriRep_DF.lif` 的拆分导出子集
-- 现在只保留 Day 2 与 Day 3
+- 第一个按 LIF 文件拆分后的目录
+- 只包含 `N39_TriRep_DF.lif` 对应的数据
 
-当前包含文件：
+当前文件：
 
 - `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_2.lif`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
 - `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_object`
 
-其中 `N39_TriRep_DF_2.lif`：
+当前导出总量：
 
-- 是空文件
-- 大小为 `0` 字节
-- 不可用
+- 可用配对数：`10019`
+- `N39_TriRep_DF_jpeg_all` 中 JPEG 总数：`20038`
+- `N39_TriRep_DF_jpeg_all_by_object` 中 position 文件夹数：`13`
 
-当前导出子集统计：
-
-| Day | Position 数 | 可用配对数 | JPEG 总数 |
-| --- | ---: | ---: | ---: |
-| Day 2 | 3 | 2296 | 4592 |
-| Day 3 | 5 | 4459 | 8918 |
-
-`Data-Yichao-3` 当前总量：
-
-- position 数：`8`
-- 可用配对数：`6755`
-- `N39_TriRep_DF_jpeg_all` 中 JPEG 总数：`13510`
-
-解释：
-
-- 这是 Day 2 + Day 3 的 monitoring 子集
-- 是拆分后较大的那一部分
-- 它与 `Data-Yichao-4` 共享同一个原始 LIF 来源
-
-
-### Data-Yichao-4
-
-当前目录角色：
-
-- 来自原始 `N39_TriRep_DF.lif` 的拆分导出子集
-- 现在只保留 Day 4
-
-当前包含文件：
-
-- `Data-Yichao-4/N39_TriRep_DF.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_jpeg_all_by_object`
-
-当前导出子集统计：
-
-| Day | Position 数 | 可用配对数 | JPEG 总数 |
-| --- | ---: | ---: | ---: |
-| Day 4 | 5 | 3264 | 6528 |
-
-`Data-Yichao-4` 当前总量：
-
-- position 数：`5`
-- 可用配对数：`3264`
-- `N39_TriRep_DF_jpeg_all` 中 JPEG 总数：`6528`
-
-解释：
-
-- 这是 Day 4 的 monitoring 子集
-- 它可以作为 held-out day-shift 测试集，也可以作为后续补充训练数据
-- 它与 `Data-Yichao-3` 共享同一个原始 LIF 来源
-
-
-### Data-Yichao-3 和 Data-Yichao-4 背后的原始动态来源
-
-原始未拆分的动态来源 `N39_TriRep_DF.lif` 共包含 13 个动态 series：
-
-- Day 2 有 3 个 position
-- Day 3 有 5 个 position
-- Day 4 有 5 个 position
-
-原始 series 结构如下：
+series 明细：
 
 | Series | XY | Z | T | 可用配对数 |
 | --- | ---: | ---: | ---: | ---: |
@@ -268,11 +206,35 @@ series 结构如下：
 - Day 2 z 步长：约 `2.000 um`
 - Day 3 z 步长：约 `1.608 um`
 - Day 4 z 步长：约 `2.000 um`
-- 时间步长：约 `1800-1805 s`，约 `30 min`
+- 时间步长：约 `1800-1805 s`，即约 `30 min`
 
-这个单一原始来源的总可用配对数是：
+解释：
 
-- `10019`
+- 这是主要的动态 monitoring 数据集
+- 它包含 Day 2、Day 3、Day 4 的 time-lapse z-stack 数据
+
+
+### Data-Yichao-4
+
+当前角色：
+
+- 第二个按 LIF 文件拆分后的目录
+- 只包含 `N39_TriRep_DF_2.lif` 对应的数据
+
+当前文件：
+
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`
+
+当前状态：
+
+- 文件大小为 `0` 字节
+- 导出失败，因为原始文件为空
+- 目前没有 `jpeg_all` 或 `jpeg_all_by_object` 目录
+
+解释：
+
+- 这个目录已经按 LIF 文件正确拆分
+- 但在 `N39_TriRep_DF_2.lif` 被恢复为有效文件之前，这里没有可用成像内容
 
 
 ## 这些文件夹到底表示什么
@@ -286,16 +248,16 @@ series 结构如下：
 例如：
 
 ```text
-00_Experiment_1_Day_3_Position002_t017_z006_c1.jpg
+00_Experiment_1_Day_2_Position001_t040_z025_c1.jpg
 ```
 
 表示：
 
 - `00`：LIF 导出中的 series 序号
-- `Experiment_1_Day_3_Position002`：一个被监测的 position
-- `t017`：第 17 个时间点
-- `z006`：第 6 个 z 平面
-- `c1`：第 1 个通道，这里视作荧光
+- `Experiment_1_Day_2_Position001`：一个被监测的 position
+- `t040`：第 40 个时间点
+- `z025`：第 25 个 z 平面
+- `c1`：第 1 个通道，这里视为荧光
 
 
 ### `N39_TriRep_DF_jpeg_all_by_object`
@@ -328,42 +290,37 @@ series 结构如下：
 它的特点是：
 
 - 文件名没有显式写出 `t000_z000`
-- 但本质上还是 5 个静态样本的单次 c0/c1 配对
+- 但本质上仍然只是 5 个静态样本的单次 c0/c1 配对
 
 更规范、信息更完整的等价导出目录是：
 
 - `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
 
 
-## 跨全部 Yichao LIF 的唯一可用数据
+## 基于底层原始文件的唯一可用数据
 
-在去除重复内容之后：
+去除重复内容后：
 
 - `Data-Yichao-1`：`5` 个配对样本，但全部在 `Data-Yichao-2` 中重复
 - `Data-Yichao-2`：`960` 个唯一动态配对样本
-- 原始 `N39_TriRep_DF.lif` 来源：`10019` 个唯一动态配对样本
+- `Data-Yichao-3/N39_TriRep_DF.lif`：`10019` 个唯一动态配对样本
+- `Data-Yichao-4/N39_TriRep_DF_2.lif`：当前 `0` 个可用配对样本，因为文件为空
 
-由于 `Data-Yichao-3` 与 `Data-Yichao-4` 只是这个原始来源的目录级拆分：
-
-- `Data-Yichao-3`：`6755` 个导出配对
-- `Data-Yichao-4`：`3264` 个导出配对
-- `6755 + 3264 = 10019`
-
-因此，底层非空原始 LIF 来源中的唯一配对平面总数仍然是：
+因此，当前非空且可用的原始 LIF 来源中的唯一配对平面总数为：
 
 - `10984`
 
-底层唯一 series/position 数量：
+这些可用原始来源中的唯一 series/position 数量为：
 
 - 5 个静态 MUC2 series
 - 6 个 Yichao-2 Day-2 动态 position
-- 原始 `N39_TriRep_DF.lif` 中的 13 个动态 position
+- `N39_TriRep_DF.lif` 中的 13 个动态 position
 - 总计 `24`
 
 
 ## 这里的“重复”或“replication”该如何理解
 
-文件名中虽然出现了 `TriRep`，但当前检查到的 LIF 元数据并不能可靠地给出严格的生物学 replicate 标签。
+文件名中虽然出现了 `TriRep`，但当前检查到的 LIF 元数据并不能可靠给出严格的生物学 replicate 标签。
 
 更稳妥的解释是：
 
@@ -395,23 +352,18 @@ series 结构如下：
 
 当前最干净的基线做法是：
 
-- 先用 `Data-Yichao-3` 训练
-- 将 `Data-Yichao-4` 作为 Day-shift 的 held-out 评估集，或者作为第二阶段补充训练数据
-
-现在这一定义比之前未拆分的布局更清楚：
-
-- `Data-Yichao-3`：Day 2 + Day 3
-- `Data-Yichao-4`：Day 4
+- 先在 `Data-Yichao-3` 上训练
+- 在 `N39_TriRep_DF_2.lif` 被恢复前，把 `Data-Yichao-4` 视为暂不可用
 
 
-### 是否应该把 Yichao-2 和 Data-Yichao-3/4 混合训练
+### 是否应该把 Yichao-2 和 Data-Yichao-3 混合训练
 
 不建议一开始就直接混合。
 
-Yichao-2 的动态数据与 `N39_TriRep_DF` 来源在空间采样上不同：
+Yichao-2 的动态数据与 `N39_TriRep_DF.lif` 的空间采样不同：
 
 - Yichao-2 动态部分：`1024 x 1024`，约 `0.568 um/pixel`
-- 原始 `N39_TriRep_DF` 来源：`512 x 512`，约 `1.137 um/pixel`
+- `N39_TriRep_DF.lif`：`512 x 512`，约 `1.137 um/pixel`
 
 这意味着：
 
@@ -420,7 +372,7 @@ Yichao-2 的动态数据与 `N39_TriRep_DF` 来源在空间采样上不同：
 
 更好的做法是：
 
-- 先在拆分后的 `Data-Yichao-3` / `Data-Yichao-4` 上建立干净基线
+- 先在 `Data-Yichao-3` 上建立干净基线
 - 再考虑在统一物理尺度后加入 Yichao-2 的动态 position
 
 
@@ -430,6 +382,5 @@ Yichao-2 的动态数据与 `N39_TriRep_DF` 来源在空间采样上不同：
 
 - `Data-Yichao-1` 只有静态数据，而且不适合作为独立测试集
 - `Data-Yichao-2` 包含有价值的动态 Day-2 数据，但也混有重复静态内容
-- `Data-Yichao-3` 现在保存的是原始 `N39_TriRep_DF.lif` 中的 Day 2 + Day 3 导出子集
-- `Data-Yichao-4` 现在保存的是同一原始来源中的 Day 4 导出子集
-- 这两个目录中的原始 `N39_TriRep_DF.lif` 只是同一个共享源文件的镜像，不是两次独立采集
+- `Data-Yichao-3` 现在是第一个按 LIF 拆分后的目录，包含 `N39_TriRep_DF.lif` 的完整导出结果
+- `Data-Yichao-4` 现在是第二个按 LIF 拆分后的目录，目前只包含空的 `N39_TriRep_DF_2.lif`
