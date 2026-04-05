@@ -26,6 +26,28 @@ from common import (
     write_json,
 )
 
+COLOR_PALETTE = np.array(
+    [
+        [244, 67, 54],
+        [33, 150, 243],
+        [76, 175, 80],
+        [255, 193, 7],
+        [156, 39, 176],
+        [255, 87, 34],
+        [63, 81, 181],
+        [0, 150, 136],
+        [205, 220, 57],
+        [121, 85, 72],
+        [233, 30, 99],
+        [3, 169, 244],
+        [139, 195, 74],
+        [255, 152, 0],
+        [103, 58, 183],
+        [0, 188, 212],
+    ],
+    dtype=np.uint8,
+)
+
 IMAGE_LEVEL_REQUIRED_FILES = (
     "brightfield_input.jpg",
     "fluorescence_reference.jpg",
@@ -142,6 +164,34 @@ def image_outputs_complete(paths: dict[str, Path]) -> bool:
 def reset_partial_outputs(paths: dict[str, Path]) -> None:
     remove_tree_if_exists(paths["image_dir"])
     remove_tree_if_exists(paths["instance_dir"])
+
+
+def build_label_and_instance_rgb(image_shape: tuple[int, int], kept: list[object]) -> tuple[np.ndarray, np.ndarray]:
+    height, width = image_shape
+    label_mask = np.zeros((height, width), dtype=np.uint16)
+    instance_rgb = np.zeros((height, width, 3), dtype=np.uint8)
+    for label_value, candidate in enumerate(sorted(kept, key=lambda item: item.area, reverse=True), start=1):
+        label_mask[candidate.mask] = label_value
+        color = COLOR_PALETTE[(label_value - 1) % len(COLOR_PALETTE)]
+        instance_rgb[candidate.mask] = color
+    return label_mask, instance_rgb
+
+
+def write_failure_record(output_root: Path, work_item: object, exc: Exception) -> None:
+    image_stem = work_item.brightfield_path.stem
+    failure_path = output_root / "failures" / work_item.dataset / work_item.object_name / f"{image_stem}.json"
+    payload = {
+        "dataset": work_item.dataset,
+        "object_name": work_item.object_name,
+        "source_brightfield_path": str(work_item.brightfield_path),
+        "source_fluorescence_path": str(work_item.fluorescence_path),
+        "stage": work_item.stage,
+        "diameters_px": list(work_item.diameters),
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "recorded_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    write_json(failure_path, payload)
 
 
 def build_instance_record(
@@ -264,7 +314,7 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
         )
 
     kept = sorted(module.merge_candidates(candidates), key=lambda item: item.area, reverse=True)
-    label_mask, instance_rgb = module.build_outputs(brightfield_rgb, kept)
+    label_mask, instance_rgb = build_label_and_instance_rgb(brightfield_gray.shape, kept)
     overlay_brightfield = build_overlay(brightfield_rgb, instance_rgb, label_mask)
     overlay_fluorescence = build_overlay(fluorescence_rgb, instance_rgb, label_mask)
     comparison_panel = build_comparison_panel(
@@ -403,6 +453,7 @@ def main() -> int:
     processed = 0
     skipped = 0
     total_instances = 0
+    failed = 0
     t0 = time.perf_counter()
 
     write_json(
@@ -416,17 +467,24 @@ def main() -> int:
             "processed_new_images": 0,
             "skipped_existing_images": 0,
             "instances_written_for_new_images": 0,
+            "failed_images": 0,
             "elapsed_seconds": 0.0,
         },
     )
 
     for index, work_item in enumerate(work_items, start=1):
-        status, instance_count = segment_one_image(output_root, work_item, module, model, skip_existing=skip_existing)
-        if status == "processed":
-            processed += 1
-            total_instances += instance_count
-        else:
-            skipped += 1
+        try:
+            status, instance_count = segment_one_image(output_root, work_item, module, model, skip_existing=skip_existing)
+            if status == "processed":
+                processed += 1
+                total_instances += instance_count
+            else:
+                skipped += 1
+        except Exception as exc:
+            failed += 1
+            image_stem = work_item.brightfield_path.stem
+            reset_partial_outputs(build_output_paths(output_root, work_item.dataset, work_item.object_name, image_stem))
+            write_failure_record(output_root, work_item, exc)
         if index % max(1, args.progress_every) == 0 or index == len(work_items):
             elapsed = max(1e-6, time.perf_counter() - t0)
             rate = index / elapsed
@@ -439,6 +497,7 @@ def main() -> int:
                 "processed_new_images": processed,
                 "skipped_existing_images": skipped,
                 "instances_written_for_new_images": total_instances,
+                "failed_images": failed,
                 "elapsed_seconds": round(elapsed, 3),
                 "images_per_second": round(rate, 3),
             }
@@ -450,6 +509,7 @@ def main() -> int:
                         "total_items": len(work_items),
                         "processed_new": processed,
                         "skipped_existing": skipped,
+                        "failed": failed,
                         "instances_written": total_instances,
                         "images_per_second": round(rate, 3),
                     }
@@ -464,6 +524,7 @@ def main() -> int:
         "processed_new_images": processed,
         "skipped_existing_images": skipped,
         "instances_written_for_new_images": total_instances,
+        "failed_images": failed,
         "elapsed_seconds": round(time.perf_counter() - t0, 3),
     }
     write_json(output_root / "run_summary.json", summary)
