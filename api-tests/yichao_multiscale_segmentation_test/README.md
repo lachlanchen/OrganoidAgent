@@ -7,6 +7,12 @@ This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one sele
 - `Data-Yichao-3`
 - `Data-Yichao-4`
 
+For Yichao, the test now uses a simpler policy:
+
+- run multiscale Cellpose on the brightfield image
+- merge overlapping Cellpose masks across diameters
+- only use the threshold/signal recovery branch as a fallback when Cellpose finds no candidates
+
 The runner reuses the multiscale merge logic from:
 
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-tools/app80_first_replicate_multiscale_cellpose/run_multiscale_dateaware_cellpose.py`

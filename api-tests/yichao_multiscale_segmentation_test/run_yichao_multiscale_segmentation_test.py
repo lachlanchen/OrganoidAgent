@@ -24,6 +24,7 @@ class DatasetSpec:
     selection_mode: str
     stage: str
     diameters: tuple[int, int, int]
+    enable_signal_recovery_fallback: bool = True
 
 
 DATASET_SPECS = (
@@ -175,7 +176,7 @@ def render_comparison_panel(source_rgb: np.ndarray, signal: np.ndarray, overlay:
     panels: list[np.ndarray] = []
     items = [
         ("Brightfield", source_rgb),
-        ("Signal", cv2.cvtColor(signal, cv2.COLOR_GRAY2RGB)),
+        ("Debug Signal", cv2.cvtColor(signal, cv2.COLOR_GRAY2RGB)),
         ("Overlay On Brightfield", overlay),
         ("Instance RGB", instance_rgb),
     ]
@@ -249,16 +250,29 @@ def run_one_dataset(
                 }
             )
 
-    signal_candidates = module.recover_signal_candidates(signal, support, grad_norm, spec.stage)
-    candidates.extend(signal_candidates)
-    branch_summaries.append(
-        {
-            "diameter_px": None,
-            "kept_candidates_before_merge": len(signal_candidates),
-            "status": "ok",
-            "source": "signal_recovery",
-        }
-    )
+    signal_recovery_used = False
+    signal_candidates = []
+    if spec.enable_signal_recovery_fallback and not candidates:
+        signal_candidates = module.recover_signal_candidates(signal, support, grad_norm, spec.stage)
+        candidates.extend(signal_candidates)
+        signal_recovery_used = bool(signal_candidates)
+        branch_summaries.append(
+            {
+                "diameter_px": None,
+                "kept_candidates_before_merge": len(signal_candidates),
+                "status": "ok",
+                "source": "signal_recovery_fallback",
+            }
+        )
+    else:
+        branch_summaries.append(
+            {
+                "diameter_px": None,
+                "kept_candidates_before_merge": 0,
+                "status": "skipped",
+                "source": "signal_recovery_fallback",
+            }
+        )
 
     kept = module.merge_candidates(candidates)
     label_mask, color_mask = module.build_outputs(source_rgb, kept)
@@ -293,6 +307,8 @@ def run_one_dataset(
         "selected_input_image": str(selected_path),
         "selection": selection_info,
         "selected_channel": "c1_brightfield",
+        "segmentation_policy": "multiscale_cellpose_with_signal_recovery_fallback",
+        "signal_recovery_used": signal_recovery_used,
         "stage": spec.stage,
         "diameters_px": list(spec.diameters),
         "image_shape": [int(source_rgb.shape[1]), int(source_rgb.shape[0])],
