@@ -1,6 +1,6 @@
 # Yichao Multiscale Segmentation Test
 
-This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one brightfield image from each Yichao dataset:
+This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one selected brightfield `c0` image from each Yichao dataset:
 
 - `Data-Yichao-1`
 - `Data-Yichao-2`
@@ -13,7 +13,7 @@ The runner reuses the multiscale merge logic from:
 
 Default output root:
 
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/api-tests/yichao_multiscale_segmentation_test/output`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_multiscale_segmentation_test`
 
 Run it with:
 

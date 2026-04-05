@@ -36,7 +36,7 @@ DATASET_SPECS = (
     ),
     DatasetSpec(
         name="Data-Yichao-2",
-        image_glob="Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object/N39_TriRep_DF_D2_Position001/*_c0.jpg",
+        image_glob="Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object/N39_TriRep_DF_D2_Position001/*_t000_z*_c0.jpg",
         selection_mode="best_focus",
         stage="cystic_early",
         diameters=(110, 220, 360),
@@ -60,7 +60,7 @@ DATASET_SPECS = (
 
 def parse_args() -> argparse.Namespace:
     repo_root = Path(__file__).resolve().parents[2]
-    default_output = repo_root / "api-tests/yichao_multiscale_segmentation_test/output"
+    default_output = repo_root / "analysis-outputs/yichao_multiscale_segmentation_test"
     parser = argparse.ArgumentParser(
         description="Run the transplanted Zhengyu multiscale segmentation pipeline on one selected brightfield image from each Yichao dataset."
     )
