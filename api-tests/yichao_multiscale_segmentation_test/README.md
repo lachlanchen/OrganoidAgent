@@ -1,0 +1,39 @@
+# Yichao Multiscale Segmentation Test
+
+This test runs the transplanted Zhengyu multiscale Cellpose pipeline on one brightfield image from each Yichao dataset:
+
+- `Data-Yichao-1`
+- `Data-Yichao-2`
+- `Data-Yichao-3`
+- `Data-Yichao-4`
+
+The runner reuses the multiscale merge logic from:
+
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-tools/app80_first_replicate_multiscale_cellpose/run_multiscale_dateaware_cellpose.py`
+
+Default output root:
+
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/api-tests/yichao_multiscale_segmentation_test/output`
+
+Run it with:
+
+```bash
+cd /home/lachlan/ProjectsLFS/OrganoidAgent
+api-tests/yichao_multiscale_segmentation_test/run_yichao_multiscale_segmentation_test.sh
+```
+
+Per-dataset outputs include:
+
+- `source.png`
+- `signal.png`
+- `support.png`
+- `multiscale_mask_16bit.png`
+- `multiscale_instance_rgb.png`
+- `multiscale_overlay.png`
+- `comparison_panel.png`
+- `multiscale_stats.json`
+
+The root run folder also contains:
+
+- `yichao_test_summary.json`
+- `yichao_multiscale_gallery.png`
