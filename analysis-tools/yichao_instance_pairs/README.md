@@ -15,6 +15,7 @@ Main scripts:
 
 - `run_yichao_instance_pair_extraction.py`
 - `build_yichao_instance_pair_database.py`
+- `resume_yichao_instance_pairs_full_tmux.sh`
 
 Output layout:
 
@@ -61,3 +62,17 @@ cd /home/lachlan/ProjectsLFS/OrganoidAgent
 bash analysis-tools/yichao_instance_pairs/run_yichao_instance_pair_extraction.sh --gpu true
 bash analysis-tools/yichao_instance_pairs/build_yichao_instance_pair_database.sh
 ```
+
+Resume in `tmux` after an interruption:
+
+```bash
+cd /home/lachlan/ProjectsLFS/OrganoidAgent
+bash analysis-tools/yichao_instance_pairs/resume_yichao_instance_pairs_full_tmux.sh
+```
+
+Resume behavior:
+
+- existing images are only skipped if the image record and all expected instance crops are present
+- partial image folders are deleted and reprocessed
+- `run_progress.json` is updated during the run
+- the combined database and CSV manifests are rebuilt after extraction completes

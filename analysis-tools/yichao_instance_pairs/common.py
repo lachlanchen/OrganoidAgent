@@ -176,12 +176,28 @@ def hardlink_or_copy(src: Path, dst: Path) -> None:
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     ensure_parent(path)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 def save_png(path: Path, image: np.ndarray) -> None:
     ensure_parent(path)
-    Image.fromarray(image).save(path)
+    tmp_path = path.with_name(path.stem + ".tmp" + path.suffix)
+    Image.fromarray(image).save(tmp_path)
+    os.replace(tmp_path, path)
+
+
+def save_cv2_image(path: Path, image: np.ndarray) -> None:
+    ensure_parent(path)
+    tmp_path = path.with_name(path.stem + ".tmp" + path.suffix)
+    cv2.imwrite(str(tmp_path), image)
+    os.replace(tmp_path, path)
+
+
+def remove_tree_if_exists(path: Path) -> None:
+    if path.exists():
+        shutil.rmtree(path)
 
 
 def build_overlay(base_rgb: np.ndarray, color_mask: np.ndarray, label_mask: np.ndarray) -> np.ndarray:

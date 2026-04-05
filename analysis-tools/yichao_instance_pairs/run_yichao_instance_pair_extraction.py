@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 from datetime import datetime
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from common import (
@@ -22,8 +20,33 @@ from common import (
     hardlink_or_copy,
     load_gray_rgb,
     load_multiscale_module,
+    remove_tree_if_exists,
     save_png,
+    save_cv2_image,
     write_json,
+)
+
+IMAGE_LEVEL_REQUIRED_FILES = (
+    "brightfield_input.jpg",
+    "fluorescence_reference.jpg",
+    "debug_signal.png",
+    "support.png",
+    "multiscale_mask_16bit.png",
+    "multiscale_instance_rgb.png",
+    "multiscale_overlay_on_brightfield.png",
+    "multiscale_overlay_on_fluorescence.png",
+    "comparison_panel.png",
+    "image_record.json",
+)
+
+INSTANCE_LEVEL_REQUIRED_FILES = (
+    "brightfield_crop.png",
+    "fluorescence_crop.png",
+    "mask_crop.png",
+    "overlay_on_brightfield_crop.png",
+    "overlay_on_fluorescence_crop.png",
+    "instance_rgb_crop.png",
+    "instance_record.json",
 )
 
 
@@ -88,12 +111,37 @@ def save_image_level_outputs(
     hardlink_or_copy(fluorescence_src, paths["fluorescence_link"])
     save_png(paths["signal_png"], signal)
     save_png(paths["support_png"], support)
-    ensure_parent(paths["mask_png"])
-    cv2.imwrite(str(paths["mask_png"]), label_mask.astype(np.uint16))
+    save_cv2_image(paths["mask_png"], label_mask.astype(np.uint16))
     save_png(paths["instance_rgb_png"], instance_rgb)
     save_png(paths["overlay_brightfield_png"], overlay_brightfield)
     save_png(paths["overlay_fluorescence_png"], overlay_fluorescence)
     save_png(paths["comparison_panel_png"], comparison_panel)
+
+
+def image_outputs_complete(paths: dict[str, Path]) -> bool:
+    for required_name in IMAGE_LEVEL_REQUIRED_FILES:
+        if not (paths["image_dir"] / required_name).exists():
+            return False
+    try:
+        image_record = json.loads(paths["image_record"].read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+    expected_instances = int(image_record.get("mask_count", 0))
+    instance_dirs = sorted(paths["instance_dir"].glob("instance_*"))
+    if len(instance_dirs) != expected_instances:
+        return False
+
+    for instance_dir in instance_dirs:
+        for required_name in INSTANCE_LEVEL_REQUIRED_FILES:
+            if not (instance_dir / required_name).exists():
+                return False
+    return True
+
+
+def reset_partial_outputs(paths: dict[str, Path]) -> None:
+    remove_tree_if_exists(paths["image_dir"])
+    remove_tree_if_exists(paths["instance_dir"])
 
 
 def build_instance_record(
@@ -149,8 +197,12 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
     image_stem = work_item.brightfield_path.stem
     image_id = f"{work_item.dataset}/{work_item.object_name}/{image_stem}"
     paths = build_output_paths(output_root, work_item.dataset, work_item.object_name, image_stem)
-    if skip_existing and paths["image_record"].exists():
-        return "skipped", 0
+    if image_outputs_complete(paths):
+        if skip_existing:
+            return "skipped", 0
+        reset_partial_outputs(paths)
+    elif paths["image_dir"].exists() or paths["instance_dir"].exists():
+        reset_partial_outputs(paths)
 
     brightfield_gray, brightfield_rgb = load_gray_rgb(work_item.brightfield_path)
     fluorescence_gray, fluorescence_rgb = load_gray_rgb(work_item.fluorescence_path)
@@ -270,8 +322,6 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
         "processed_at": datetime.now().isoformat(timespec="seconds"),
     }
 
-    write_json(paths["image_record"], image_record)
-
     for label_value, candidate in enumerate(kept, start=1):
         candidate_mask = label_mask == label_value
         crop_meta = compute_square_crop(candidate_mask)
@@ -312,6 +362,8 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
         instance_record = build_instance_record(output_root, instance_dir, image_record, candidate, label_value, crop_meta)
         write_json(instance_dir / "instance_record.json", instance_record)
 
+    write_json(paths["image_record"], image_record)
+
     return "processed", int(label_mask.max())
 
 
@@ -343,6 +395,7 @@ def main() -> int:
         "fluorescence_channel": "c0",
     }
     write_json(output_root / "run_config.json", run_config)
+    progress_path = output_root / "run_progress.json"
 
     module = load_multiscale_module(repo_root)
     model = module.models.CellposeModel(gpu=resolve_use_gpu(args.gpu))
@@ -351,6 +404,21 @@ def main() -> int:
     skipped = 0
     total_instances = 0
     t0 = time.perf_counter()
+
+    write_json(
+        progress_path,
+        {
+            "status": "running",
+            "started_at": datetime.now().isoformat(timespec="seconds"),
+            "output_root": str(output_root),
+            "target_images": len(work_items),
+            "processed_items": 0,
+            "processed_new_images": 0,
+            "skipped_existing_images": 0,
+            "instances_written_for_new_images": 0,
+            "elapsed_seconds": 0.0,
+        },
+    )
 
     for index, work_item in enumerate(work_items, start=1):
         status, instance_count = segment_one_image(output_root, work_item, module, model, skip_existing=skip_existing)
@@ -362,6 +430,19 @@ def main() -> int:
         if index % max(1, args.progress_every) == 0 or index == len(work_items):
             elapsed = max(1e-6, time.perf_counter() - t0)
             rate = index / elapsed
+            progress_payload = {
+                "status": "running",
+                "updated_at": datetime.now().isoformat(timespec="seconds"),
+                "output_root": str(output_root),
+                "target_images": len(work_items),
+                "processed_items": index,
+                "processed_new_images": processed,
+                "skipped_existing_images": skipped,
+                "instances_written_for_new_images": total_instances,
+                "elapsed_seconds": round(elapsed, 3),
+                "images_per_second": round(rate, 3),
+            }
+            write_json(progress_path, progress_payload)
             print(
                 json.dumps(
                     {
@@ -386,6 +467,13 @@ def main() -> int:
         "elapsed_seconds": round(time.perf_counter() - t0, 3),
     }
     write_json(output_root / "run_summary.json", summary)
+    write_json(
+        progress_path,
+        {
+            "status": "finished",
+            **summary,
+        },
+    )
     print(output_root)
     print(output_root / "run_summary.json")
     return 0
