@@ -49,11 +49,33 @@ log() {
 }
 
 count_completed_images() {
-  find "$OUTPUT_ROOT/images" -name image_record.json -type f 2>/dev/null | wc -l | tr -d ' '
+  if [[ ${#DATASETS[@]} -eq 0 ]]; then
+    find "$OUTPUT_ROOT/images" -name image_record.json -type f 2>/dev/null | wc -l | tr -d ' '
+    return
+  fi
+
+  local total=0
+  local dataset_count
+  for dataset in "${DATASETS[@]}"; do
+    dataset_count="$(find "$OUTPUT_ROOT/images/$dataset" -name image_record.json -type f 2>/dev/null | wc -l | tr -d ' ')"
+    total=$((total + dataset_count))
+  done
+  printf '%s\n' "$total"
 }
 
 count_failure_records() {
-  find "$OUTPUT_ROOT/failures" -name '*.json' -type f 2>/dev/null | wc -l | tr -d ' '
+  if [[ ${#DATASETS[@]} -eq 0 ]]; then
+    find "$OUTPUT_ROOT/failures" -name '*.json' -type f 2>/dev/null | wc -l | tr -d ' '
+    return
+  fi
+
+  local total=0
+  local dataset_count
+  for dataset in "${DATASETS[@]}"; do
+    dataset_count="$(find "$OUTPUT_ROOT/failures/$dataset" -name '*.json' -type f 2>/dev/null | wc -l | tr -d ' ')"
+    total=$((total + dataset_count))
+  done
+  printf '%s\n' "$total"
 }
 
 resolve_target_images() {
