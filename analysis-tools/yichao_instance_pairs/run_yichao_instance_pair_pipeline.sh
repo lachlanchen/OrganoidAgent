@@ -2,14 +2,44 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-OUTPUT_ROOT="${1:-$ROOT/analysis-outputs/yichao_instance_pairs}"
+OUTPUT_ROOT="$ROOT/analysis-outputs/yichao_instance_pairs"
 CHUNK_NEW_IMAGES="${YICHAO_CHUNK_NEW_IMAGES:-300}"
 MAX_ATTEMPTS_WITHOUT_PROGRESS="${YICHAO_MAX_ATTEMPTS_WITHOUT_PROGRESS:-5}"
 RETRY_SLEEP_SECONDS="${YICHAO_RETRY_SLEEP_SECONDS:-8}"
+ORGANOID_PYTHON="/home/lachlan/miniconda3/envs/organoid/bin/python"
+DATASETS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-root)
+      OUTPUT_ROOT="$2"
+      shift 2
+      ;;
+    --datasets)
+      shift
+      while [[ $# -gt 0 && "$1" != --* ]]; do
+        DATASETS+=("$1")
+        shift
+      done
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--output-root PATH] [--datasets Data-Yichao-5 ...]"
+      exit 0
+      ;;
+    *)
+      if [[ "$1" == --* ]]; then
+        echo "Unknown argument: $1" >&2
+        exit 2
+      fi
+      OUTPUT_ROOT="$1"
+      shift
+      ;;
+  esac
+done
+
 LOG_DIR="$OUTPUT_ROOT/logs"
 PIPELINE_LOG="$LOG_DIR/pipeline.log"
 STATUS_JSON="$OUTPUT_ROOT/pipeline_status.json"
-ORGANOID_PYTHON="/home/lachlan/miniconda3/envs/organoid/bin/python"
 
 mkdir -p "$LOG_DIR"
 
@@ -27,15 +57,16 @@ count_failure_records() {
 }
 
 resolve_target_images() {
-  "$ORGANOID_PYTHON" - <<'PY' "$ROOT" "$OUTPUT_ROOT"
+  "$ORGANOID_PYTHON" - <<'PY' "$ROOT" "${DATASETS[@]}"
 from pathlib import Path
 import sys
 
 repo_root = Path(sys.argv[1])
+dataset_names = set(sys.argv[2:]) or None
 sys.path.insert(0, str(repo_root / "analysis-tools" / "yichao_instance_pairs"))
 from common import discover_work_items
 
-print(len(discover_work_items(repo_root)))
+print(len(discover_work_items(repo_root, dataset_names=dataset_names)))
 PY
 }
 
@@ -76,8 +107,9 @@ PY
 target_images="$(resolve_target_images)"
 attempt=0
 no_progress_attempts=0
+dataset_filter="${DATASETS[*]:-ALL}"
 
-log "pipeline start output_root=$OUTPUT_ROOT target_images=$target_images chunk_new_images=$CHUNK_NEW_IMAGES"
+log "pipeline start output_root=$OUTPUT_ROOT datasets=$dataset_filter target_images=$target_images chunk_new_images=$CHUNK_NEW_IMAGES"
 
 initial_completed="$(count_completed_images)"
 initial_failures="$(count_failure_records)"
@@ -96,10 +128,17 @@ while true; do
   write_status "running" "$target_images" "$before_completed" "$before_failures" "$attempt" "$no_progress_attempts" 0
   log "chunk start attempt=$attempt completed_before=$before_completed failures_before=$before_failures"
 
-  if bash "$ROOT/analysis-tools/yichao_instance_pairs/run_yichao_instance_pair_extraction.sh" \
-    --gpu true \
-    --output-root "$OUTPUT_ROOT" \
-    --max-new-images "$CHUNK_NEW_IMAGES"; then
+  extraction_cmd=(
+    bash "$ROOT/analysis-tools/yichao_instance_pairs/run_yichao_instance_pair_extraction.sh"
+    --gpu true
+    --output-root "$OUTPUT_ROOT"
+    --max-new-images "$CHUNK_NEW_IMAGES"
+  )
+  if [[ ${#DATASETS[@]} -gt 0 ]]; then
+    extraction_cmd+=(--datasets "${DATASETS[@]}")
+  fi
+
+  if "${extraction_cmd[@]}"; then
     chunk_exit_code=0
   else
     chunk_exit_code=$?

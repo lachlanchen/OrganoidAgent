@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260406)
     parser.add_argument("--indices", nargs="*", type=int, default=None)
     parser.add_argument("--columns", type=int, default=3)
+    parser.add_argument("--datasets", nargs="*", default=[])
     return parser.parse_args()
 
 
@@ -33,6 +34,11 @@ def load_manifest(dataset_root: Path) -> list[dict[str, str]]:
 
 
 def select_rows(rows: list[dict[str, str]], args: argparse.Namespace) -> list[dict[str, str]]:
+    if args.datasets:
+        allowed = set(args.datasets)
+        rows = [row for row in rows if row["dataset"] in allowed]
+    if not rows:
+        raise RuntimeError("No pair rows matched the requested preview filters.")
     if args.indices:
         selected = []
         for index in args.indices:
