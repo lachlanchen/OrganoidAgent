@@ -180,7 +180,7 @@ def build_label_and_instance_rgb(image_shape: tuple[int, int], kept: list[object
 
 def write_failure_record(output_root: Path, work_item: object, exc: Exception) -> None:
     image_stem = work_item.brightfield_path.stem
-    failure_path = output_root / "failures" / work_item.dataset / work_item.object_name / f"{image_stem}.json"
+    failure_path = failure_record_path(output_root, work_item)
     payload = {
         "dataset": work_item.dataset,
         "object_name": work_item.object_name,
@@ -193,6 +193,25 @@ def write_failure_record(output_root: Path, work_item: object, exc: Exception) -
         "recorded_at": datetime.now().isoformat(timespec="seconds"),
     }
     write_json(failure_path, payload)
+
+
+def failure_record_path(output_root: Path, work_item: object) -> Path:
+    image_stem = work_item.brightfield_path.stem
+    return output_root / "failures" / work_item.dataset / work_item.object_name / f"{image_stem}.json"
+
+
+def normalize_candidate_masks(candidates: list[object], image_shape: tuple[int, int]) -> list[object]:
+    height, width = image_shape
+    normalized: list[object] = []
+    for candidate in candidates:
+        mask = np.asarray(candidate.mask, dtype=bool)
+        if mask.ndim != 2 or mask.shape != (height, width):
+            continue
+        if not mask.any():
+            continue
+        candidate.mask = mask
+        normalized.append(candidate)
+    return normalized
 
 
 def build_instance_record(
@@ -314,7 +333,7 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
             }
         )
 
-    kept = sorted(module.merge_candidates(candidates), key=lambda item: item.area, reverse=True)
+    kept = normalize_candidate_masks(module.merge_candidates(candidates), brightfield_gray.shape)
     label_mask, instance_rgb = build_label_and_instance_rgb(brightfield_gray.shape, kept)
     overlay_brightfield = build_overlay(brightfield_rgb, instance_rgb, label_mask)
     overlay_fluorescence = build_overlay(fluorescence_rgb, instance_rgb, label_mask)
@@ -375,6 +394,8 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
 
     for label_value, candidate in enumerate(kept, start=1):
         candidate_mask = label_mask == label_value
+        if not candidate_mask.any():
+            continue
         crop_meta = compute_square_crop(candidate_mask)
         instance_dir = paths["instance_dir"] / f"instance_{label_value:04d}"
 
@@ -414,6 +435,9 @@ def segment_one_image(output_root: Path, work_item: object, module: object, mode
         write_json(instance_dir / "instance_record.json", instance_record)
 
     write_json(paths["image_record"], image_record)
+    failure_path = failure_record_path(output_root, work_item)
+    if failure_path.exists():
+        failure_path.unlink()
 
     return "processed", int(label_mask.max())
 

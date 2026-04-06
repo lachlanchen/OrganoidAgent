@@ -29,20 +29,13 @@ count_failure_records() {
 resolve_target_images() {
   "$ORGANOID_PYTHON" - <<'PY' "$ROOT" "$OUTPUT_ROOT"
 from pathlib import Path
-import json
 import sys
 
 repo_root = Path(sys.argv[1])
-output_root = Path(sys.argv[2])
-run_config_path = output_root / "run_config.json"
-if run_config_path.exists():
-    payload = json.loads(run_config_path.read_text(encoding="utf-8"))
-    print(int(payload["image_count_target"]))
-else:
-    sys.path.insert(0, str(repo_root / "analysis-tools" / "yichao_instance_pairs"))
-    from common import discover_work_items
+sys.path.insert(0, str(repo_root / "analysis-tools" / "yichao_instance_pairs"))
+from common import discover_work_items
 
-    print(len(discover_work_items(repo_root)))
+print(len(discover_work_items(repo_root)))
 PY
 }
 
@@ -85,6 +78,16 @@ attempt=0
 no_progress_attempts=0
 
 log "pipeline start output_root=$OUTPUT_ROOT target_images=$target_images chunk_new_images=$CHUNK_NEW_IMAGES"
+
+initial_completed="$(count_completed_images)"
+initial_failures="$(count_failure_records)"
+if [[ "$initial_completed" -ge "$target_images" ]]; then
+  log "all image records already complete, building database"
+  bash "$ROOT/analysis-tools/yichao_instance_pairs/build_yichao_instance_pair_database.sh" --output-root "$OUTPUT_ROOT"
+  write_status "finished" "$target_images" "$initial_completed" "$initial_failures" 0 0 0
+  log "pipeline finished successfully"
+  exit 0
+fi
 
 while true; do
   attempt=$((attempt + 1))
