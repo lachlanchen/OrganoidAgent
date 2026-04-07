@@ -15,6 +15,8 @@ Main scripts:
 
 - `run_yichao_instance_pair_extraction.py`
 - `build_yichao_instance_pair_database.py`
+- `backfill_yichao_instance_metadata.sh`
+- `plot_yichao_instance_size_histograms.py`
 - `resume_yichao_instance_pairs_full_tmux.sh`
 - `run_yichao_dataset_incremental_pipeline.sh`
 - `resume_yichao_dataset_incremental_pipeline_tmux.sh`
@@ -27,6 +29,19 @@ Output layout:
 - `manifests/instance_records.csv`
 - `manifests/summary.json`
 - `database/instance_pairs.sqlite`
+
+The rebuilt instance database now includes filter-ready fields such as:
+
+- `is_edge_padded`
+- `source_image_width_px`
+- `source_image_height_px`
+- `crop_area_px`
+- `area_px_percentile`
+- `area_px_quantile_level_20`
+- `area_px_within_middle_90`
+- `area_px_within_middle_95`
+- `square_crop_size_px_percentile`
+- `crop_area_px_percentile`
 
 Each image folder contains:
 
@@ -96,3 +111,10 @@ Resume behavior:
 - partial image folders are deleted and reprocessed
 - `run_progress.json` is updated during the run
 - the combined database and CSV manifests are rebuilt after extraction completes
+
+Backfill the current instance database and resized metadata without touching the existing image files:
+
+```bash
+cd /home/lachlan/ProjectsLFS/OrganoidAgent
+bash analysis-tools/yichao_instance_pairs/backfill_yichao_instance_metadata.sh
+```

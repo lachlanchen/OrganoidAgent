@@ -15,6 +15,7 @@ The prepared dataset layout is:
 - `brightfield_256/<dataset>/<pair_index>.png`
 - `fluorescence_256/<dataset>/<pair_index>.png`
 - `metadata/pairs_manifest.csv`
+- `metadata/resized_pairs.sqlite`
 - `metadata/summary.json`
 - `preview/random_pairs_*.png`
 
@@ -25,10 +26,17 @@ Notes:
 - The resize target is `256x256`.
 - Pair indices are global, zero-padded, and consistent across brightfield and fluorescence.
 - Original provenance is preserved in the CSV manifest.
+- The metadata is refreshable in place without regenerating the existing `256x256` PNG files.
 
 Example commands:
 
 ```bash
 python /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_instance_pairs_256/prepare_dataset.py
 python /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_instance_pairs_256/preview_random_pairs.py
+```
+
+Refresh the metadata and resized SQLite from the source instance database without deleting the current image files:
+
+```bash
+python /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_instance_pairs_256/prepare_dataset.py --refresh-metadata
 ```

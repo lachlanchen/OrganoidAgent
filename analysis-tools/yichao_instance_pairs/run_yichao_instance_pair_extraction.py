@@ -224,6 +224,18 @@ def build_instance_record(
 ) -> dict[str, object]:
     image_id = str(image_record["image_id"])
     instance_id = f"{image_id}::instance_{label_value:04d}"
+    source_image_width_px = int(image_record["image_width_px"])
+    source_image_height_px = int(image_record["image_height_px"])
+    crop_x = int(crop_meta["crop_x"])
+    crop_y = int(crop_meta["crop_y"])
+    crop_w = int(crop_meta["crop_w"])
+    crop_h = int(crop_meta["crop_h"])
+    is_edge_padded = int(
+        crop_x < 0
+        or crop_y < 0
+        or crop_x + crop_w > source_image_width_px
+        or crop_y + crop_h > source_image_height_px
+    )
     return {
         "instance_id": instance_id,
         "image_id": image_id,
@@ -243,16 +255,20 @@ def build_instance_record(
         "edge_strength": round(float(candidate.edge_strength), 6),
         "circularity": round(float(candidate.circularity), 6),
         "source": candidate.source,
+        "source_image_width_px": source_image_width_px,
+        "source_image_height_px": source_image_height_px,
         "bbox_x": int(crop_meta["bbox_x"]),
         "bbox_y": int(crop_meta["bbox_y"]),
         "bbox_w": int(crop_meta["bbox_w"]),
         "bbox_h": int(crop_meta["bbox_h"]),
-        "crop_x": int(crop_meta["crop_x"]),
-        "crop_y": int(crop_meta["crop_y"]),
-        "crop_w": int(crop_meta["crop_w"]),
-        "crop_h": int(crop_meta["crop_h"]),
-        "square_crop_size_px": int(crop_meta["crop_w"]),
+        "crop_x": crop_x,
+        "crop_y": crop_y,
+        "crop_w": crop_w,
+        "crop_h": crop_h,
+        "square_crop_size_px": crop_w,
+        "crop_area_px": crop_w * crop_h,
         "padding_px": int(crop_meta["padding_px"]),
+        "is_edge_padded": is_edge_padded,
         "instance_dir": str(instance_dir),
         "brightfield_crop_path": str(instance_dir / "brightfield_crop.png"),
         "fluorescence_crop_path": str(instance_dir / "fluorescence_crop.png"),
