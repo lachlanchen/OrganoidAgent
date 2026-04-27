@@ -6,6 +6,7 @@ import io
 import json
 import mimetypes
 import os
+import shutil
 import tarfile
 import time
 import zipfile
@@ -13,6 +14,8 @@ from pathlib import Path
 
 import tornado.ioloop
 import tornado.web
+
+from agent_studio import CodexJobError, CodexJobManager, ParseError, StudioChatStore, parse_aaps
 
 try:
     import pandas as pd
@@ -47,6 +50,9 @@ WEB_DIR = BASE_DIR / "web"
 METADATA_DIR = BASE_DIR / "metadata"
 CACHE_DIR = DATA_DIR / ".cache"
 PREVIEW_DIR = CACHE_DIR / "previews"
+STUDIO_DIR = BASE_DIR / "analysis-outputs" / "organoid_agent_studio"
+CHAT_STORE = StudioChatStore(STUDIO_DIR / "chat")
+CODEX_JOBS = CodexJobManager(BASE_DIR, STUDIO_DIR)
 
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
@@ -97,6 +103,7 @@ def file_kind(path):
 
 
 def list_datasets():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     datasets = []
     for entry in sorted(DATA_DIR.iterdir()):
         if not entry.is_dir():
@@ -562,6 +569,139 @@ class ExtractHandler(tornado.web.RequestHandler):
         self.write({"extracted_to": str(rel_target)})
 
 
+class AgentStateHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write(
+            {
+                "studio_root": str(STUDIO_DIR),
+                "codex_available": bool(shutil.which("codex")),
+                "default_model": CODEX_JOBS.default_model,
+                "recent_jobs": CODEX_JOBS.list_jobs(limit=10),
+            }
+        )
+
+
+class AgentSessionHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        session = CHAT_STORE.new_session(str(payload.get("title") or "OrganoidAgent chat"))
+        self.write({"session": session, "messages": []})
+
+    def get(self):
+        session_id = self.get_argument("id", "")
+        if not session_id:
+            self.set_status(400)
+            self.write({"error": "session id is required"})
+            return
+        try:
+            self.write({"session": CHAT_STORE.get_session(session_id), "messages": CHAT_STORE.list_messages(session_id)})
+        except FileNotFoundError:
+            self.set_status(404)
+            self.write({"error": "session not found"})
+
+
+class AgentPipelineParseHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        try:
+            ir = parse_aaps(str(payload.get("text") or ""))
+            self.write({"ok": True, "ir": ir})
+        except ParseError as exc:
+            self.set_status(400)
+            self.write(exc.to_dict())
+
+
+class AgentCodexJobHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        try:
+            self.write(CODEX_JOBS.submit_job(payload))
+        except CodexJobError as exc:
+            self.set_status(400)
+            self.write({"error": exc.code, "detail": exc.detail})
+
+    def get(self):
+        job_id = self.get_argument("id", "")
+        if not job_id:
+            self.set_status(400)
+            self.write({"error": "job id is required"})
+            return
+        try:
+            self.write(CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True))
+        except FileNotFoundError:
+            self.set_status(404)
+            self.write({"error": "job not found"})
+
+
+class AgentCodexResultHandler(tornado.web.RequestHandler):
+    def get(self):
+        job_id = self.get_argument("id", "")
+        if not job_id:
+            self.set_status(400)
+            self.write({"error": "job id is required"})
+            return
+        try:
+            self.write(CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True))
+        except FileNotFoundError:
+            self.set_status(404)
+            self.write({"error": "job not found"})
+
+
+class AgentChatHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        session_id = str(payload.get("session_id") or "")
+        if not session_id:
+            session = CHAT_STORE.new_session("OrganoidAgent chat")
+            session_id = session["id"]
+        else:
+            try:
+                session = CHAT_STORE.get_session(session_id)
+            except FileNotFoundError:
+                session = CHAT_STORE.new_session("OrganoidAgent chat")
+                session_id = session["id"]
+
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            self.set_status(400)
+            self.write({"error": "message is required"})
+            return
+        user_message = CHAT_STORE.append_message(session_id, "user", message)
+        transcript = CHAT_STORE.list_messages(session_id)[-12:]
+        tool = str(payload.get("tool") or "response")
+        job_payload = {
+            "tool": tool,
+            "prompt": message,
+            "session_id": session_id,
+            "transcript": transcript,
+            "pipeline_text": str(payload.get("pipeline_text") or ""),
+            "allow_edits": bool(payload.get("allow_edits", tool == "assistant")),
+            "model": payload.get("model"),
+            "reasoning": payload.get("reasoning"),
+        }
+        try:
+            job_status = CODEX_JOBS.submit_job(job_payload)
+        except CodexJobError as exc:
+            self.set_status(400)
+            self.write({"error": exc.code, "detail": exc.detail})
+            return
+        assistant_message = CHAT_STORE.append_message(
+            session_id,
+            "assistant",
+            f"Started Codex {tool} job {job_status['job']['id']}.",
+            job_id=job_status["job"]["id"],
+            status="queued",
+        )
+        self.write(
+            {
+                "session": session,
+                "user_message": user_message,
+                "assistant_message": assistant_message,
+                "job": job_status["job"],
+            }
+        )
+
+
 def make_app():
     return tornado.web.Application(
         [
@@ -572,6 +712,12 @@ def make_app():
             (r"/api/category/(datasets|segmentation|features|analysis)", CategoryHandler),
             (r"/api/preview", PreviewHandler),
             (r"/api/extract", ExtractHandler),
+            (r"/api/agent/state", AgentStateHandler),
+            (r"/api/agent/session", AgentSessionHandler),
+            (r"/api/agent/chat", AgentChatHandler),
+            (r"/api/agent/pipeline/parse", AgentPipelineParseHandler),
+            (r"/api/agent/codex/job", AgentCodexJobHandler),
+            (r"/api/agent/codex/result", AgentCodexResultHandler),
             (r"/files/(.*)", tornado.web.StaticFileHandler, {"path": str(DATA_DIR)}),
             (r"/previews/(.*)", tornado.web.StaticFileHandler, {"path": str(PREVIEW_DIR)}),
             (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR)}),

@@ -2,7 +2,22 @@ const state = {
   datasets: [],
   files: [],
   activeDataset: null,
+  agent: {
+    sessionId: null,
+    activeJobId: null,
+    pollTimer: null,
+  },
 };
+
+const defaultPipeline = `AUTOAPPDEV_PIPELINE 1
+TASK {"id":"yichao_pix2pix","title":"Yichao fluorescence prediction dataset","objective":"Prepare paired brightfield and fluorescence instances for pix2pix training."}
+STEP {"id":"inspect","block":"plan","title":"Inspect data","instruction":"Check Yichao 1/2/3/4/5/6 structure, channel mapping, and existing instance-pair database."}
+ACTION {"type":"read","target":"references/Yichao"}
+STEP {"id":"segment","block":"work","title":"Segment brightfield","instruction":"Run the multiscale Cellpose segmentation pipeline on brightfield channel c1 and save overlays/intermediates."}
+ACTION {"type":"script","target":"analysis-tools/yichao_instance_pairs"}
+STEP {"id":"pair","block":"work","title":"Build pix2pix pairs","instruction":"Crop matched c1 brightfield and c0 fluorescence instances, then resize or pad to 256x256."}
+ACTION {"type":"dataset","target":"analysis-outputs/yichao_pix2pix_256"}
+STEP {"id":"review","block":"summary","title":"Review quality","instruction":"Report edge padding, instance size quantiles, debris filtering risks, and preview paths."}`;
 
 async function fetchJson(url, options = {}) {
   const resp = await fetch(url, options);
@@ -11,6 +26,14 @@ async function fetchJson(url, options = {}) {
     throw new Error(text || resp.statusText);
   }
   return resp.json();
+}
+
+async function postJson(url, payload) {
+  return fetchJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 function setActiveTab(tabName) {
@@ -228,6 +251,188 @@ function renderPreview(containerId, payload) {
   container.textContent = "Preview not available.";
 }
 
+function appendAgentMessage(role, content) {
+  const container = document.getElementById("agent-messages");
+  if (!container) {
+    return;
+  }
+  const div = document.createElement("div");
+  div.className = `chat-message ${role}`;
+  div.innerHTML = `<div class="chat-role">${escapeHtml(role)}</div><div>${escapeHtml(content)}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderPipelineBlocks(ir) {
+  const canvas = document.getElementById("pipeline-blocks");
+  if (!canvas) {
+    return;
+  }
+  canvas.innerHTML = "";
+  ir.tasks.forEach((task) => {
+    const taskEl = document.createElement("div");
+    taskEl.className = "program-block task";
+    taskEl.innerHTML = `<strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.objective || task.id)}</span>`;
+    canvas.appendChild(taskEl);
+    task.steps.forEach((step) => {
+      const stepEl = document.createElement("div");
+      stepEl.className = `program-block ${step.block}`;
+      stepEl.innerHTML = `
+        <strong>${escapeHtml(step.title)}</strong>
+        <span>${escapeHtml(step.instruction || step.id)}</span>
+        <small>${escapeHtml(step.block)} • ${step.actions.length} actions</small>
+      `;
+      canvas.appendChild(stepEl);
+    });
+  });
+}
+
+async function parsePipeline() {
+  const editor = document.getElementById("pipeline-editor");
+  const status = document.getElementById("pipeline-status");
+  if (!editor || !status) {
+    return null;
+  }
+  status.textContent = "Parsing pipeline...";
+  try {
+    const data = await postJson("/api/agent/pipeline/parse", { text: editor.value });
+    renderPipelineBlocks(data.ir);
+    const stepCount = data.ir.tasks.reduce((sum, task) => sum + task.steps.length, 0);
+    status.textContent = `Parsed ${data.ir.tasks.length} task(s), ${stepCount} step(s).`;
+    return data.ir;
+  } catch (err) {
+    status.textContent = `Parse failed: ${err.message}`;
+    return null;
+  }
+}
+
+async function loadAgentState() {
+  const grid = document.getElementById("agent-status-grid");
+  if (!grid) {
+    return;
+  }
+  try {
+    const data = await fetchJson("/api/agent/state");
+    grid.innerHTML = `
+      <div class="status-row"><span>Backend</span><strong>ok</strong></div>
+      <div class="status-row"><span>Codex</span><strong>${data.codex_available ? "available" : "missing"}</strong></div>
+      <div class="status-row"><span>Model</span><strong>${escapeHtml(data.default_model)}</strong></div>
+      <div class="status-row"><span>Jobs</span><strong>${data.recent_jobs.length}</strong></div>
+    `;
+  } catch (err) {
+    grid.innerHTML = `<div class="status-row"><span>Backend</span><strong>error</strong></div>`;
+  }
+}
+
+async function ensureAgentSession() {
+  if (state.agent.sessionId) {
+    return state.agent.sessionId;
+  }
+  const data = await postJson("/api/agent/session", { title: "OrganoidAgent Studio" });
+  state.agent.sessionId = data.session.id;
+  return state.agent.sessionId;
+}
+
+function setAgentOutput(text) {
+  const output = document.getElementById("agent-job-output");
+  if (output) {
+    output.textContent = text || "No output yet.";
+  }
+}
+
+async function pollAgentJob(jobId) {
+  if (!jobId) {
+    return;
+  }
+  try {
+    const data = await fetchJson(`/api/agent/codex/job?id=${encodeURIComponent(jobId)}`);
+    const job = data.job;
+    const body = data.output_text || data.logs?.stderr_tail || data.logs?.stdout_tail || "Waiting for Codex output...";
+    setAgentOutput(`[${job.status}] ${job.id}\n\n${body}`);
+    if (["succeeded", "failed", "cancelled"].includes(job.status)) {
+      clearInterval(state.agent.pollTimer);
+      state.agent.pollTimer = null;
+      appendAgentMessage("assistant", data.output_text || `Job ${job.status}: ${job.id}`);
+    }
+  } catch (err) {
+    setAgentOutput(`Poll failed: ${err.message}`);
+  }
+}
+
+async function submitAgentJob(tool, prompt) {
+  const pipelineText = document.getElementById("pipeline-editor")?.value || "";
+  const sessionId = await ensureAgentSession();
+  const data = await postJson("/api/agent/chat", {
+    session_id: sessionId,
+    message: prompt,
+    tool,
+    pipeline_text: pipelineText,
+    allow_edits: tool === "assistant",
+  });
+  state.agent.activeJobId = data.job.id;
+  appendAgentMessage("user", prompt);
+  appendAgentMessage("assistant", `Started ${tool} job ${data.job.id}.`);
+  setAgentOutput(`[queued] ${data.job.id}`);
+  if (state.agent.pollTimer) {
+    clearInterval(state.agent.pollTimer);
+  }
+  state.agent.pollTimer = setInterval(() => pollAgentJob(data.job.id), 2500);
+  pollAgentJob(data.job.id);
+}
+
+function insertPipelineTemplate(kind) {
+  const editor = document.getElementById("pipeline-editor");
+  if (!editor) {
+    return;
+  }
+  const snippets = {
+    segmentation: 'STEP {"id":"segment_next","block":"work","title":"Segment brightfield","instruction":"Run brightfield segmentation and save instance masks, overlays, and crops."}\nACTION {"type":"script","target":"analysis-tools/yichao_instance_pairs"}',
+    pairing: 'STEP {"id":"pair_next","block":"work","title":"Create paired crops","instruction":"Match brightfield c1 with fluorescence c0 and write paired dataset records."}\nACTION {"type":"dataset","target":"analysis-outputs/yichao_instance_pairs"}',
+    quantification: 'STEP {"id":"quantify_next","block":"work","title":"Quantify instances","instruction":"Measure instance size, padding, edge contact, fluorescence intensity, and debris flags."}',
+    review: 'STEP {"id":"review_next","block":"debug","title":"Human review gate","instruction":"Sample random pairs and identify debris, edge-padded crops, and wrong channel assignments."}',
+    report: 'STEP {"id":"report_next","block":"summary","title":"Write report","instruction":"Summarize outputs, database paths, histograms, and training recommendations."}',
+  };
+  editor.value = `${editor.value.trim()}\n${snippets[kind] || ""}\n`;
+  parsePipeline();
+}
+
+function initAgentStudio() {
+  const editor = document.getElementById("pipeline-editor");
+  if (!editor) {
+    return;
+  }
+  editor.value = defaultPipeline;
+  parsePipeline();
+  loadAgentState();
+  document.getElementById("parse-pipeline-btn")?.addEventListener("click", parsePipeline);
+  document.getElementById("refresh-agent-state")?.addEventListener("click", loadAgentState);
+  document.getElementById("new-agent-chat")?.addEventListener("click", async () => {
+    const data = await postJson("/api/agent/session", { title: "OrganoidAgent Studio" });
+    state.agent.sessionId = data.session.id;
+    document.getElementById("agent-messages").innerHTML = "";
+    setAgentOutput(`New session ${data.session.id}`);
+  });
+  document.getElementById("send-plan-btn")?.addEventListener("click", () => {
+    submitAgentJob("response", "Review this AAPS pipeline and suggest the next concrete OrganoidAgent implementation step.");
+  });
+  document.getElementById("run-assistant-btn")?.addEventListener("click", () => {
+    submitAgentJob("assistant", "Use this AAPS pipeline as the current plan and make the next safe implementation change in this repository.");
+  });
+  document.getElementById("send-agent-chat")?.addEventListener("click", () => {
+    const input = document.getElementById("agent-chat-input");
+    const message = input.value.trim();
+    if (!message) {
+      return;
+    }
+    const tool = document.getElementById("assistant-mode-toggle")?.checked ? "assistant" : "response";
+    input.value = "";
+    submitAgentJob(tool, message);
+  });
+  document.querySelectorAll("[data-template]").forEach((button) => {
+    button.addEventListener("click", () => insertPipelineTemplate(button.dataset.template));
+  });
+}
+
 async function loadDatasetMetadata(dataset) {
   const container = document.getElementById("dataset-info");
   if (!container) {
@@ -300,6 +505,7 @@ loadDatasets().catch((err) => {
 loadCategory("segmentation", "segmentation-list", "preview-panel").catch(() => {});
 loadCategory("features", "features-list", "features-preview").catch(() => {});
 loadCategory("analysis", "analysis-list", "analysis-preview").catch(() => {});
+initAgentStudio();
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/static/sw.js", { scope: "/" });
