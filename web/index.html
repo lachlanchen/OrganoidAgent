@@ -26,10 +26,10 @@
 
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="datasets">Datasets</button>
-      <button class="tab" data-tab="agent">Agent Studio</button>
       <button class="tab" data-tab="segmentation">Segmentation</button>
       <button class="tab" data-tab="features">Features</button>
       <button class="tab" data-tab="analysis">Analysis</button>
+      <button class="tab" data-tab="agent">Agent Studio</button>
     </nav>
 
     <main class="content">
@@ -61,21 +61,33 @@
               <h2>Blocks</h2>
               <span class="muted">AAPS v1</span>
             </div>
+            <button class="block-pill plan" data-template="inspect">Inspect</button>
             <button class="block-pill segmentation" data-template="segmentation">Segmentation</button>
-            <button class="block-pill tracking" data-template="pairing">Pair Dataset</button>
+            <button class="block-pill tracking" data-template="tracking">Tracking</button>
+            <button class="block-pill pairing" data-template="pairing">Pair Dataset</button>
             <button class="block-pill quantification" data-template="quantification">Quantification</button>
+            <button class="block-pill database" data-template="database">Database</button>
             <button class="block-pill review" data-template="review">Review Gate</button>
             <button class="block-pill report" data-template="report">Report</button>
           </aside>
 
           <section class="studio-program card">
             <div class="section-heading">
-              <h2>Pipeline Program</h2>
+              <div>
+                <h2>Pipeline Program</h2>
+                <p class="hint">Load a task script, edit blocks, then ask Codex to review or execute.</p>
+              </div>
               <div class="button-row">
                 <button class="soft-btn" id="parse-pipeline-btn">Parse Blocks</button>
                 <button class="soft-btn" id="send-plan-btn">Ask Codex</button>
                 <button class="soft-btn" id="run-assistant-btn">Assistant Job</button>
               </div>
+            </div>
+            <div class="script-loader">
+              <label for="script-select">Task script</label>
+              <select id="script-select"></select>
+              <button class="soft-btn" id="load-script-btn">Load Script</button>
+              <button class="soft-btn" id="save-script-btn">Save Local Edits</button>
             </div>
             <textarea id="pipeline-editor" class="pipeline-editor" spellcheck="false"></textarea>
             <div id="pipeline-status" class="hint">Edit or paste an AAPS pipeline, then parse it into blocks.</div>
@@ -95,6 +107,17 @@
             <h2 class="small-heading">Execution Output</h2>
             <pre id="agent-job-output" class="terminal-output">No active job.</pre>
           </aside>
+        </div>
+
+        <div class="card studio-database-card">
+          <div class="section-heading">
+            <div>
+              <h2>Database Registry</h2>
+              <p class="hint">Maintained SQLite outputs and summaries from OrganoidAgent, ../Zhengyu, and ../Compactness.</p>
+            </div>
+            <button class="soft-btn" id="refresh-database-registry">Refresh Databases</button>
+          </div>
+          <div id="database-registry" class="database-registry">Loading databases...</div>
         </div>
 
         <div class="card studio-chat-card">

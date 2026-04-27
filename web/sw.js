@@ -1,14 +1,14 @@
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== "organoid-agent-v2").map((key) => caches.delete(key)))
+      Promise.all(keys.filter((key) => key !== "organoid-agent-v3").map((key) => caches.delete(key)))
     )
   );
 });
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("organoid-agent-v2").then((cache) =>
+    caches.open("organoid-agent-v3").then((cache) =>
       cache.addAll([
         "/",
         "/static/styles.css",
@@ -32,7 +32,7 @@ self.addEventListener("fetch", (event) => {
         cached ||
         fetch(request).then((response) => {
           const copy = response.clone();
-          caches.open("organoid-agent-v2").then((cache) => {
+          caches.open("organoid-agent-v3").then((cache) => {
             cache.put(request, copy);
           });
           return response;

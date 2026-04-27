@@ -295,12 +295,24 @@ body {
   background: linear-gradient(135deg, #7c3df0, #2767f1);
 }
 
+.block-pill.plan {
+  background: linear-gradient(135deg, #2453b8, #2993d1);
+}
+
 .block-pill.tracking {
   background: linear-gradient(135deg, #246df2, #19a3e6);
 }
 
+.block-pill.pairing {
+  background: linear-gradient(135deg, #134e8f, #38bdf8);
+}
+
 .block-pill.quantification {
   background: linear-gradient(135deg, #16a876, #29c09e);
+}
+
+.block-pill.database {
+  background: linear-gradient(135deg, #334155, #0f766e);
 }
 
 .block-pill.review {
@@ -326,6 +338,29 @@ body {
     linear-gradient(90deg, rgba(27, 93, 154, 0.04) 1px, transparent 1px),
     #fff;
   background-size: 22px 22px;
+}
+
+.script-loader {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.script-loader label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.script-loader select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: rgba(255, 255, 255, 0.9);
+  font: inherit;
 }
 
 .pipeline-canvas {
@@ -405,6 +440,50 @@ body {
 
 .studio-chat-card {
   margin-top: 18px;
+}
+
+.studio-database-card {
+  margin-top: 18px;
+}
+
+.database-registry {
+  display: grid;
+  gap: 10px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.database-card {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(237, 247, 244, 0.78));
+}
+
+.db-title {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.db-tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.db-table {
+  display: inline-flex;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.danger {
+  color: #b42318;
 }
 
 .chat-messages {
@@ -496,7 +575,8 @@ td {
     grid-template-columns: 1fr;
   }
   .studio-shell,
-  .chat-compose {
+  .chat-compose,
+  .script-loader {
     grid-template-columns: 1fr;
   }
   .topbar {

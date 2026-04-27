@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import shutil
+import sqlite3
 import tarfile
 import time
 import zipfile
@@ -65,6 +66,12 @@ MAX_ARCHIVE_PREVIEW_BYTES = 50 * 1024 * 1024
 DATASET_METADATA = {
     "zenodo_10643410": "zenodo_10643410.md",
 }
+
+DATABASE_SCAN_ROOTS = [
+    ("OrganoidAgent", BASE_DIR / "analysis-outputs"),
+    ("Zhengyu", BASE_DIR.parent / "Zhengyu"),
+    ("Compactness", BASE_DIR.parent / "Compactness"),
+]
 
 
 def format_bytes(num):
@@ -136,6 +143,90 @@ def load_dataset_metadata(dataset_name):
     if not path.exists():
         return None
     return {"markdown": path.read_text(encoding="utf-8")}
+
+
+def _sqlite_table_counts(path, limit=12):
+    counts = []
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            rows = conn.execute(
+                "select name from sqlite_master where type='table' and name not like 'sqlite_%' order by name"
+            ).fetchall()
+            for (name,) in rows[:limit]:
+                try:
+                    count = conn.execute(f'select count(*) from "{name}"').fetchone()[0]
+                except Exception:
+                    count = None
+                counts.append({"table": name, "rows": count})
+        finally:
+            conn.close()
+    except Exception as exc:
+        return [], str(exc)
+    return counts, None
+
+
+def _nearby_summary(path):
+    candidates = [
+        path.parent / "summary.json",
+        path.parent.parent / "summary.json",
+        path.parent.parent / "manifests" / "summary.json",
+        path.parent.parent / "metadata" / "summary.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            data = read_json_file(candidate)
+            if isinstance(data, dict):
+                overview = {}
+                for key, value in data.items():
+                    if isinstance(value, (str, int, float, bool)) or value is None:
+                        overview[key] = value
+                    elif isinstance(value, dict):
+                        overview[f"{key}_keys"] = len(value)
+                    elif isinstance(value, list):
+                        overview[f"{key}_items"] = len(value)
+                    if len(overview) >= 12:
+                        break
+                return {"path": str(candidate), "overview": overview}
+    return None
+
+
+def read_json_file(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def list_studio_databases():
+    items = []
+    for project, root in DATABASE_SCAN_ROOTS:
+        if not root.exists():
+            continue
+        for current_root, dirs, files in os.walk(root):
+            dirs[:] = sorted([name for name in dirs if not name.startswith(".")])
+            for filename in sorted(files):
+                path = Path(current_root) / filename
+                if path.suffix.lower() not in {".sqlite", ".db"}:
+                    continue
+                tables, error = _sqlite_table_counts(path)
+                items.append(
+                    {
+                        "project": project,
+                        "name": path.name,
+                        "path": str(path),
+                        "size_bytes": path.stat().st_size,
+                        "size_human": format_bytes(path.stat().st_size),
+                        "tables": tables,
+                        "error": error,
+                        "summary": _nearby_summary(path),
+                    }
+                )
+                if len(items) >= 200:
+                    return items
+            if len(items) >= 200:
+                continue
+    return items
 
 
 def list_files(dataset_path):
@@ -581,6 +672,11 @@ class AgentStateHandler(tornado.web.RequestHandler):
         )
 
 
+class AgentDatabasesHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write({"databases": list_studio_databases()})
+
+
 class AgentSessionHandler(tornado.web.RequestHandler):
     def post(self):
         payload = json.loads(self.request.body.decode("utf-8") or "{}")
@@ -713,6 +809,7 @@ def make_app():
             (r"/api/preview", PreviewHandler),
             (r"/api/extract", ExtractHandler),
             (r"/api/agent/state", AgentStateHandler),
+            (r"/api/agent/databases", AgentDatabasesHandler),
             (r"/api/agent/session", AgentSessionHandler),
             (r"/api/agent/chat", AgentChatHandler),
             (r"/api/agent/pipeline/parse", AgentPipelineParseHandler),

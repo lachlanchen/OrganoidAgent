@@ -6,10 +6,15 @@ const state = {
     sessionId: null,
     activeJobId: null,
     pollTimer: null,
+    activeScript: "yichao",
   },
 };
 
-const defaultPipeline = `AUTOAPPDEV_PIPELINE 1
+const pipelineScripts = {
+  yichao: {
+    title: "Yichao pix2pix differentiation prediction",
+    databaseHint: "analysis-outputs/yichao_instance_pairs/database/instance_pairs.sqlite",
+    text: `AUTOAPPDEV_PIPELINE 1
 TASK {"id":"yichao_pix2pix","title":"Yichao fluorescence prediction dataset","objective":"Prepare paired brightfield and fluorescence instances for pix2pix training."}
 STEP {"id":"inspect","block":"plan","title":"Inspect data","instruction":"Check Yichao 1/2/3/4/5/6 structure, channel mapping, and existing instance-pair database."}
 ACTION {"type":"read","target":"references/Yichao"}
@@ -17,7 +22,51 @@ STEP {"id":"segment","block":"work","title":"Segment brightfield","instruction":
 ACTION {"type":"script","target":"analysis-tools/yichao_instance_pairs"}
 STEP {"id":"pair","block":"work","title":"Build pix2pix pairs","instruction":"Crop matched c1 brightfield and c0 fluorescence instances, then resize or pad to 256x256."}
 ACTION {"type":"dataset","target":"analysis-outputs/yichao_pix2pix_256"}
-STEP {"id":"review","block":"summary","title":"Review quality","instruction":"Report edge padding, instance size quantiles, debris filtering risks, and preview paths."}`;
+STEP {"id":"database","block":"work","title":"Maintain database","instruction":"Backfill edge padding flags, size quantiles, source image metadata, and resized-pair links into SQLite."}
+ACTION {"type":"database","target":"analysis-outputs/yichao_instance_pairs/database/instance_pairs.sqlite"}
+STEP {"id":"review","block":"summary","title":"Review quality","instruction":"Report edge padding, instance size quantiles, debris filtering risks, and preview paths."}`,
+  },
+  zhengyu: {
+    title: "../Zhengyu segmentation and metric pipeline",
+    databaseHint: "../Zhengyu",
+    text: `AUTOAPPDEV_PIPELINE 1
+TASK {"id":"zhengyu_deo_metrics","title":"Zhengyu DEO segmentation metrics","objective":"Reuse the production multiscale segmentation and metric extraction workflow from ../Zhengyu."}
+STEP {"id":"read_method","block":"plan","title":"Read canonical method","instruction":"Open the segmentation handoff and PDF references before editing or running scripts."}
+ACTION {"type":"read","target":"../Zhengyu/references/codex_segmentation_handoff.md"}
+ACTION {"type":"read","target":"../Zhengyu/references/deo_segmentation_metric_method_tex/main.pdf"}
+STEP {"id":"segment","block":"work","title":"Run multiscale segmentation","instruction":"Use the production Cellpose recovery pipeline and save masks, instance overlays, and recovery intermediates."}
+ACTION {"type":"script","target":"../Zhengyu"}
+STEP {"id":"quantify","block":"work","title":"Compute DEO metrics","instruction":"Extract growth, fusion, compactness, and differentiation metrics into the maintained database."}
+ACTION {"type":"database","target":"../Zhengyu"}
+STEP {"id":"validate","block":"debug","title":"Validate against references","instruction":"Compare outputs with saved intermediate masks and metric catalogs, then report deviations."}
+STEP {"id":"report","block":"summary","title":"Summarize run","instruction":"Write output paths, database status, and quality-control notes."}`,
+  },
+  compactness: {
+    title: "../Compactness compactness analysis",
+    databaseHint: "../Compactness",
+    text: `AUTOAPPDEV_PIPELINE 1
+TASK {"id":"compactness_analysis","title":"Compactness image-analysis pipeline","objective":"Build and maintain a compactness-focused organoid image analysis workflow."}
+STEP {"id":"inspect","block":"plan","title":"Inspect Compactness repo","instruction":"Find the image sources, current scripts, database outputs, and expected compactness definitions."}
+ACTION {"type":"read","target":"../Compactness"}
+STEP {"id":"segment","block":"work","title":"Segment organoids","instruction":"Run or adapt multiscale brightfield segmentation and save instance masks and overlays."}
+STEP {"id":"quantify","block":"work","title":"Quantify compactness","instruction":"Measure area, perimeter, solidity, eccentricity, texture, and compactness scores per instance."}
+STEP {"id":"database","block":"work","title":"Maintain database","instruction":"Store per-image and per-instance metrics with source paths, crop geometry, and QC flags."}
+ACTION {"type":"database","target":"../Compactness"}
+STEP {"id":"review","block":"debug","title":"Review edge cases","instruction":"Sample high/low compactness instances and flag debris, edge clipping, and bad focus."}
+STEP {"id":"report","block":"summary","title":"Report dataset readiness","instruction":"Summarize usable images, metric distributions, and recommended filtering."}`,
+  },
+  generic: {
+    title: "Generic organoid agent workflow",
+    databaseHint: "analysis-outputs",
+    text: `AUTOAPPDEV_PIPELINE 1
+TASK {"id":"organoid_generic","title":"Generic organoid analysis task","objective":"Inspect data, segment objects, quantify instances, maintain a database, and report results."}
+STEP {"id":"inspect","block":"plan","title":"Inspect task","instruction":"Identify inputs, channels, imaging design, output folders, and existing references."}
+STEP {"id":"segment","block":"work","title":"Segment images","instruction":"Run the appropriate segmentation pipeline and save masks, overlays, and intermediates."}
+STEP {"id":"quantify","block":"work","title":"Quantify instances","instruction":"Extract per-image and per-instance metrics with QC flags."}
+STEP {"id":"database","block":"work","title":"Maintain database","instruction":"Create or update the SQLite database and summary manifests."}
+STEP {"id":"report","block":"summary","title":"Report outputs","instruction":"Document output paths, counts, filters, and next actions."}`,
+  },
+};
 
 async function fetchJson(url, options = {}) {
   const resp = await fetch(url, options);
@@ -66,7 +115,7 @@ function renderList(containerId, items, onClick) {
 }
 
 function escapeHtml(value) {
-  return value
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -287,6 +336,87 @@ function renderPipelineBlocks(ir) {
   });
 }
 
+function populateScriptSelect() {
+  const select = document.getElementById("script-select");
+  if (!select) {
+    return;
+  }
+  select.innerHTML = Object.entries(pipelineScripts)
+    .map(([key, script]) => `<option value="${escapeHtml(key)}">${escapeHtml(script.title)}</option>`)
+    .join("");
+  select.value = state.agent.activeScript;
+}
+
+function loadSelectedScript(forcePreset = false) {
+  const select = document.getElementById("script-select");
+  const editor = document.getElementById("pipeline-editor");
+  if (!select || !editor) {
+    return;
+  }
+  const key = select.value || "yichao";
+  const localKey = `organoid-agent-script-${key}`;
+  state.agent.activeScript = key;
+  editor.value = !forcePreset && localStorage.getItem(localKey) ? localStorage.getItem(localKey) : pipelineScripts[key].text;
+  parsePipeline();
+}
+
+function saveSelectedScript() {
+  const editor = document.getElementById("pipeline-editor");
+  if (!editor) {
+    return;
+  }
+  const key = state.agent.activeScript || "yichao";
+  localStorage.setItem(`organoid-agent-script-${key}`, editor.value);
+  const status = document.getElementById("pipeline-status");
+  if (status) {
+    status.textContent = `Saved local edits for ${pipelineScripts[key].title}.`;
+  }
+}
+
+function renderDatabases(databases) {
+  const container = document.getElementById("database-registry");
+  if (!container) {
+    return;
+  }
+  if (!databases.length) {
+    container.innerHTML = "<div class='muted'>No SQLite databases found.</div>";
+    return;
+  }
+  container.innerHTML = databases
+    .map((db) => {
+      const tableRows = (db.tables || [])
+        .map((table) => `<span class="db-table">${escapeHtml(table.table)}: ${escapeHtml(table.rows ?? "?")}</span>`)
+        .join("");
+      const summary = db.summary?.path ? `<div class="meta">summary: ${escapeHtml(db.summary.path)}</div>` : "";
+      const error = db.error ? `<div class="meta danger">sqlite read error: ${escapeHtml(db.error)}</div>` : "";
+      return `
+        <div class="database-card">
+          <div class="db-title">${escapeHtml(db.project)} · ${escapeHtml(db.name)}</div>
+          <div class="meta">${escapeHtml(db.path)} · ${escapeHtml(db.size_human)}</div>
+          <div class="db-tables">${tableRows || "<span class='db-table'>no tables read</span>"}</div>
+          ${summary}
+          ${error}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function loadDatabaseRegistry() {
+  const container = document.getElementById("database-registry");
+  if (container) {
+    container.textContent = "Loading databases...";
+  }
+  try {
+    const data = await fetchJson("/api/agent/databases");
+    renderDatabases(data.databases || []);
+  } catch (err) {
+    if (container) {
+      container.textContent = `Database scan failed: ${err.message}`;
+    }
+  }
+}
+
 async function parsePipeline() {
   const editor = document.getElementById("pipeline-editor");
   const status = document.getElementById("pipeline-status");
@@ -298,7 +428,8 @@ async function parsePipeline() {
     const data = await postJson("/api/agent/pipeline/parse", { text: editor.value });
     renderPipelineBlocks(data.ir);
     const stepCount = data.ir.tasks.reduce((sum, task) => sum + task.steps.length, 0);
-    status.textContent = `Parsed ${data.ir.tasks.length} task(s), ${stepCount} step(s).`;
+    const script = pipelineScripts[state.agent.activeScript] || pipelineScripts.generic;
+    status.textContent = `Parsed ${data.ir.tasks.length} task(s), ${stepCount} step(s). Database hint: ${script.databaseHint}.`;
     return data.ir;
   } catch (err) {
     status.textContent = `Parse failed: ${err.message}`;
@@ -386,9 +517,12 @@ function insertPipelineTemplate(kind) {
     return;
   }
   const snippets = {
+    inspect: 'STEP {"id":"inspect_next","block":"plan","title":"Inspect inputs","instruction":"Identify source folders, channels, time/depth design, references, scripts, and output requirements."}\nACTION {"type":"read","target":"references"}',
     segmentation: 'STEP {"id":"segment_next","block":"work","title":"Segment brightfield","instruction":"Run brightfield segmentation and save instance masks, overlays, and crops."}\nACTION {"type":"script","target":"analysis-tools/yichao_instance_pairs"}',
+    tracking: 'STEP {"id":"tracking_next","block":"work","title":"Track positions over time","instruction":"Link objects across day/time/position folders and record monitoring metadata."}\nACTION {"type":"database","target":"analysis-outputs"}',
     pairing: 'STEP {"id":"pair_next","block":"work","title":"Create paired crops","instruction":"Match brightfield c1 with fluorescence c0 and write paired dataset records."}\nACTION {"type":"dataset","target":"analysis-outputs/yichao_instance_pairs"}',
     quantification: 'STEP {"id":"quantify_next","block":"work","title":"Quantify instances","instruction":"Measure instance size, padding, edge contact, fluorescence intensity, and debris flags."}',
+    database: 'STEP {"id":"database_next","block":"work","title":"Maintain database","instruction":"Create or update SQLite tables, summary manifests, schema notes, source paths, and QC filter fields."}\nACTION {"type":"database","target":"analysis-outputs"}',
     review: 'STEP {"id":"review_next","block":"debug","title":"Human review gate","instruction":"Sample random pairs and identify debris, edge-padded crops, and wrong channel assignments."}',
     report: 'STEP {"id":"report_next","block":"summary","title":"Write report","instruction":"Summarize outputs, database paths, histograms, and training recommendations."}',
   };
@@ -401,11 +535,17 @@ function initAgentStudio() {
   if (!editor) {
     return;
   }
-  editor.value = defaultPipeline;
+  populateScriptSelect();
+  loadSelectedScript();
   parsePipeline();
   loadAgentState();
+  loadDatabaseRegistry();
+  document.getElementById("script-select")?.addEventListener("change", () => loadSelectedScript());
+  document.getElementById("load-script-btn")?.addEventListener("click", () => loadSelectedScript(true));
+  document.getElementById("save-script-btn")?.addEventListener("click", saveSelectedScript);
   document.getElementById("parse-pipeline-btn")?.addEventListener("click", parsePipeline);
   document.getElementById("refresh-agent-state")?.addEventListener("click", loadAgentState);
+  document.getElementById("refresh-database-registry")?.addEventListener("click", loadDatabaseRegistry);
   document.getElementById("new-agent-chat")?.addEventListener("click", async () => {
     const data = await postJson("/api/agent/session", { title: "OrganoidAgent Studio" });
     state.agent.sessionId = data.session.id;
