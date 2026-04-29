@@ -22,6 +22,7 @@ class DatasetSourceSpec:
     source_rel: str
     default_stage: str
     default_diameters: tuple[int, int, int]
+    series_indices: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,31 @@ DATASET_SOURCES = (
         source_rel="Data-Yichao-5/N39_TriRep_DF_3_jpeg_all_by_position",
         default_stage="fused_large",
         default_diameters=(70, 130, 220),
+    ),
+    DatasetSourceSpec(
+        name="Data-Yichao-6",
+        source_rel="Data-Yichao-6/N39_TriRep_4_jpeg_all_by_position",
+        default_stage="fused_large",
+        default_diameters=(70, 130, 220),
+    ),
+    DatasetSourceSpec(
+        name="Data-Yichao-7",
+        source_rel="Data-Yichao-7/N39_TriRep_5_jpeg_all_by_position",
+        default_stage="fused_large",
+        default_diameters=(70, 130, 220),
+    ),
+    DatasetSourceSpec(
+        name="Data-Yichao-8",
+        source_rel="Data-Yichao-8/N39_TriRep_DF_6_jpeg_all_by_position",
+        default_stage="fused_large",
+        default_diameters=(70, 130, 220),
+    ),
+    DatasetSourceSpec(
+        name="Data-Yichao-9",
+        source_rel="Data-Yichao-9/PDO28 and Jurkat_jpeg_all_by_position",
+        default_stage="fused_large",
+        default_diameters=(70, 130, 220),
+        series_indices=(3, 4, 5),
     ),
 )
 
@@ -118,7 +144,7 @@ def resolve_segmentation_config(dataset_name: str, object_name: str) -> tuple[st
         if "MUC2" in object_name:
             return "differentiated_irregular", (140, 240, 380)
         return "cystic_early", (110, 220, 360)
-    if dataset_name in {"Data-Yichao-3", "Data-Yichao-4", "Data-Yichao-5"}:
+    if dataset_name in {"Data-Yichao-3", "Data-Yichao-4", "Data-Yichao-5", "Data-Yichao-6", "Data-Yichao-7", "Data-Yichao-8", "Data-Yichao-9"}:
         return "fused_large", (70, 130, 220)
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -141,6 +167,8 @@ def discover_work_items(
             if brightfield_path.name.startswith("._"):
                 continue
             meta = parse_image_name(brightfield_path)
+            if spec.series_indices is not None and int(meta["series_index"]) not in spec.series_indices:
+                continue
             fluorescence_path = paired_channel_path(brightfield_path, 0)
             stage, diameters = resolve_segmentation_config(spec.name, meta["object_name"])
             items.append(
