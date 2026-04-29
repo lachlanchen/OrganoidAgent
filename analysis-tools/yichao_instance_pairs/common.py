@@ -94,6 +94,12 @@ DATASET_SOURCES = (
         default_diameters=(70, 130, 220),
         series_indices=(3, 4, 5),
     ),
+    DatasetSourceSpec(
+        name="Data-Yichao-10",
+        source_rel="Data-Yichao-10/N39_TriRep_DF_7_jpeg_all_by_position",
+        default_stage="fused_large",
+        default_diameters=(70, 130, 220),
+    ),
 )
 
 
@@ -144,7 +150,7 @@ def resolve_segmentation_config(dataset_name: str, object_name: str) -> tuple[st
         if "MUC2" in object_name:
             return "differentiated_irregular", (140, 240, 380)
         return "cystic_early", (110, 220, 360)
-    if dataset_name in {"Data-Yichao-3", "Data-Yichao-4", "Data-Yichao-5", "Data-Yichao-6", "Data-Yichao-7", "Data-Yichao-8", "Data-Yichao-9"}:
+    if dataset_name in {"Data-Yichao-3", "Data-Yichao-4", "Data-Yichao-5", "Data-Yichao-6", "Data-Yichao-7", "Data-Yichao-8", "Data-Yichao-9", "Data-Yichao-10"}:
         return "fused_large", (70, 130, 220)
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
