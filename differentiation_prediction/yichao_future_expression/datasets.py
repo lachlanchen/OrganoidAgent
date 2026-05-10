@@ -28,24 +28,48 @@ FEATURE_COLUMNS = [
 
 
 class B2FDataset(Dataset):
-    def __init__(self, rows: Sequence[dict[str, str]], image_size: int, *, augment: bool = False) -> None:
+    def __init__(
+        self,
+        rows: Sequence[dict[str, str]],
+        image_size: int,
+        *,
+        augment: bool = False,
+        path_mode: str = "resized_256",
+    ) -> None:
         self.rows = list(rows)
         self.image_size = image_size
         self.augment = augment
+        self.path_mode = path_mode
 
     @classmethod
-    def from_manifest(cls, manifest_path: Path, split: str, image_size: int, *, augment: bool = False) -> "B2FDataset":
+    def from_manifest(
+        cls,
+        manifest_path: Path,
+        split: str,
+        image_size: int,
+        *,
+        augment: bool = False,
+        path_mode: str = "resized_256",
+    ) -> "B2FDataset":
         rows = [row for row in read_csv(manifest_path) if row["split"] == split]
-        return cls(rows, image_size=image_size, augment=augment)
+        return cls(rows, image_size=image_size, augment=augment, path_mode=path_mode)
 
     def __len__(self) -> int:
         return len(self.rows)
 
+    def image_paths(self, row: dict[str, str]) -> tuple[Path, Path, Path]:
+        if self.path_mode == "original_crop":
+            return Path(row["brightfield_crop_path"]), Path(row["fluorescence_crop_path"]), Path(row["mask_crop_path"])
+        if self.path_mode == "resized_256":
+            return Path(row["brightfield_256_path"]), Path(row["fluorescence_256_path"]), Path(row["mask_256_path"])
+        raise ValueError(f"Unsupported B2F path_mode: {self.path_mode}")
+
     def __getitem__(self, index: int) -> dict[str, torch.Tensor | str]:
         row = self.rows[index]
-        brightfield = image_to_tensor(Path(row["brightfield_256_path"]), self.image_size)
-        fluorescence = image_to_tensor(Path(row["fluorescence_256_path"]), self.image_size)
-        mask = image_to_tensor(Path(row["mask_256_path"]), self.image_size, mask=True)
+        brightfield_path, fluorescence_path, mask_path = self.image_paths(row)
+        brightfield = image_to_tensor(brightfield_path, self.image_size)
+        fluorescence = image_to_tensor(fluorescence_path, self.image_size)
+        mask = image_to_tensor(mask_path, self.image_size, mask=True)
         if self.augment:
             if torch.rand(()) < 0.5:
                 brightfield = torch.flip(brightfield, dims=[2])
@@ -164,4 +188,3 @@ def fit_target_stats(future_rows: Sequence[dict[str, str]], split: str = "train"
     peak = np.asarray([coerce_float(row["future_peak_log"]) for row in selected], dtype=np.float32)
     auc = np.asarray([coerce_float(row["future_auc_log"]) for row in selected], dtype=np.float32)
     return float(peak.mean()), float(max(peak.std(), 1e-6)), float(auc.mean()), float(max(auc.std(), 1e-6))
-

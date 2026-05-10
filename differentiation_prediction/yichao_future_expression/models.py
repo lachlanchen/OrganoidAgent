@@ -61,6 +61,113 @@ class B2FMultiTaskUNet(nn.Module):
         return self.out_image(d1), self.scalar_head(b)
 
 
+def _group_count(channels: int) -> int:
+    for groups in (16, 12, 8, 6, 4, 2):
+        if channels % groups == 0:
+            return groups
+    return 1
+
+
+class ResidualGNBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, *, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False)
+        self.norm1 = nn.GroupNorm(_group_count(out_channels), out_channels)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False)
+        self.norm2 = nn.GroupNorm(_group_count(out_channels), out_channels)
+        self.act = nn.SiLU(inplace=True)
+        self.dropout = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
+        self.skip = (
+            nn.Identity()
+            if in_channels == out_channels
+            else nn.Conv2d(in_channels, out_channels, 1, bias=False)
+        )
+        squeeze_channels = max(8, out_channels // 8)
+        self.squeeze = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(out_channels, squeeze_channels, 1),
+            nn.SiLU(inplace=True),
+            nn.Conv2d(squeeze_channels, out_channels, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = self.skip(x)
+        out = self.act(self.norm1(self.conv1(x)))
+        out = self.dropout(out)
+        out = self.norm2(self.conv2(out))
+        out = out * self.squeeze(out)
+        return self.act(out + residual)
+
+
+class DownsampleBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, *, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.down = nn.Conv2d(in_channels, out_channels, 3, stride=2, padding=1, bias=False)
+        self.norm = nn.GroupNorm(_group_count(out_channels), out_channels)
+        self.act = nn.SiLU(inplace=True)
+        self.block = ResidualGNBlock(out_channels, out_channels, dropout=dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.block(self.act(self.norm(self.down(x))))
+
+
+class UpsampleBlock(nn.Module):
+    def __init__(self, in_channels: int, skip_channels: int, out_channels: int, *, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.reduce = nn.Conv2d(in_channels, out_channels, 1, bias=False)
+        self.block = ResidualGNBlock(out_channels + skip_channels, out_channels, dropout=dropout)
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        x = torch.nn.functional.interpolate(x, size=skip.shape[-2:], mode="bilinear", align_corners=False)
+        x = self.reduce(x)
+        return self.block(torch.cat([x, skip], dim=1))
+
+
+class StrongB2FResUNet(nn.Module):
+    """Larger residual U-Net for sparse fluorescence reconstruction.
+
+    The forward method returns image logits, not a sigmoid image. Training losses
+    can therefore combine weighted BCE-with-logits and intensity regression
+    without losing numerical stability.
+    """
+
+    def __init__(self, base_channels: int = 48, dropout: float = 0.05) -> None:
+        super().__init__()
+        c = base_channels
+        self.enc1 = ResidualGNBlock(1, c, dropout=dropout)
+        self.enc2 = DownsampleBlock(c, c * 2, dropout=dropout)
+        self.enc3 = DownsampleBlock(c * 2, c * 4, dropout=dropout)
+        self.enc4 = DownsampleBlock(c * 4, c * 8, dropout=dropout)
+        self.bottleneck = DownsampleBlock(c * 8, c * 12, dropout=dropout)
+        self.mid = ResidualGNBlock(c * 12, c * 12, dropout=dropout)
+        self.up4 = UpsampleBlock(c * 12, c * 8, c * 8, dropout=dropout)
+        self.up3 = UpsampleBlock(c * 8, c * 4, c * 4, dropout=dropout)
+        self.up2 = UpsampleBlock(c * 4, c * 2, c * 2, dropout=dropout)
+        self.up1 = UpsampleBlock(c * 2, c, c, dropout=dropout)
+        self.out_logits = nn.Conv2d(c, 1, 1)
+        self.scalar_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c * 12, c * 4),
+            nn.SiLU(inplace=True),
+            nn.Dropout(0.15),
+            nn.Linear(c * 4, 3),
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        b = self.mid(self.bottleneck(e4))
+        d4 = self.up4(b, e4)
+        d3 = self.up3(d4, e3)
+        d2 = self.up2(d3, e2)
+        d1 = self.up1(d2, e1)
+        return self.out_logits(d1), self.scalar_head(b)
+
+
 class SmallImageEncoder(nn.Module):
     def __init__(self, embedding_dim: int = 128, base_channels: int = 24) -> None:
         super().__init__()
@@ -117,4 +224,3 @@ class FutureExpressionModel(nn.Module):
         packed = nn.utils.rnn.pack_padded_sequence(sequence, lengths, batch_first=True, enforce_sorted=False)
         _, hidden = self.gru(packed)
         return self.head(hidden[-1])
-
