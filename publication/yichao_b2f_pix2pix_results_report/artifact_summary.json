@@ -1,0 +1,118 @@
+{
+  "run_root": "/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_pix2pix_384_v1_noamp_long",
+  "architecture": "pix2pix_unet",
+  "image_size": 384,
+  "train_count": 6691,
+  "val_count": 1601,
+  "test_count": 1088,
+  "early_stop": {
+    "triggered": true,
+    "already_converged_on_resume": true,
+    "stop_epoch": 78,
+    "state": {
+      "metric": "score",
+      "best_value": -0.22489818599228678,
+      "best_epoch": 10,
+      "stale_evals": 13,
+      "eval_count": 16,
+      "last_eval_epoch": 75,
+      "last_value": -0.3891364807393547,
+      "maximizes": true
+    },
+    "patience_evals": 10,
+    "min_delta": 0.001,
+    "min_epochs": 40
+  },
+  "test_metrics": {
+    "loss": 0.20941007668700287,
+    "image_mae": 0.08407962555978812,
+    "image_mse": 0.015742978978950797,
+    "image_psnr": 18.029130844479553,
+    "masked_mae": 0.09552300346350963,
+    "signal_mae": 0.13550208333699115,
+    "background_mae": 0.07391435145180972,
+    "signal_iou": 0.24025188994187432,
+    "signal_precision": 0.2664095313009543,
+    "signal_recall": 0.7098850828298306,
+    "signal_f1": 0.3874243480542231,
+    "expression_auc": 0.879489225857941,
+    "expression_ap": 0.12657139410536672,
+    "peak_pearson": 0.24385859677308114,
+    "n": 1088,
+    "best_epoch": 10
+  },
+  "test_pred_target_mean_corr": 0.6916553584477217,
+  "per_example_rows": 1088,
+  "dataset_summary": [
+    {
+      "dataset": "Data-Yichao-1",
+      "n": 1,
+      "target_signal_mean": 0.00038310751551762223,
+      "pred_signal_mean": 0.16496609151363373,
+      "signal_f1_mean": 0.0029348161878282354,
+      "masked_mae_mean": 0.1452988088130951
+    },
+    {
+      "dataset": "Data-Yichao-2",
+      "n": 33,
+      "target_signal_mean": 0.15369171893513395,
+      "pred_signal_mean": 0.12391411198415991,
+      "signal_f1_mean": 0.17805667107575496,
+      "masked_mae_mean": 0.12229546949718938
+    },
+    {
+      "dataset": "Data-Yichao-3",
+      "n": 345,
+      "target_signal_mean": 0.053410405847851346,
+      "pred_signal_mean": 0.28990805390328034,
+      "signal_f1_mean": 0.13018221270126884,
+      "masked_mae_mean": 0.11740250095077183
+    },
+    {
+      "dataset": "Data-Yichao-5",
+      "n": 180,
+      "target_signal_mean": 0.0023558098047033126,
+      "pred_signal_mean": 0.10339915130260427,
+      "signal_f1_mean": 0.006516657311716,
+      "masked_mae_mean": 0.0986499407225185
+    },
+    {
+      "dataset": "Data-Yichao-6",
+      "n": 86,
+      "target_signal_mean": 0.018186204891440697,
+      "pred_signal_mean": 0.08710235761499949,
+      "signal_f1_mean": 0.03876682870315741,
+      "masked_mae_mean": 0.0777824247732412
+    },
+    {
+      "dataset": "Data-Yichao-7",
+      "n": 170,
+      "target_signal_mean": 0.023649308297118456,
+      "pred_signal_mean": 0.05254388407780318,
+      "signal_f1_mean": 0.06425999551396307,
+      "masked_mae_mean": 0.05968684520134154
+    },
+    {
+      "dataset": "Data-Yichao-9",
+      "n": 273,
+      "target_signal_mean": 0.3696342972499547,
+      "pred_signal_mean": 0.7446027296380355,
+      "signal_f1_mean": 0.501291465656249,
+      "masked_mae_mean": 0.09771908975237019
+    }
+  ],
+  "selected_prediction_examples": [
+    "Data-Yichao-9/S100A4_CAR-Jurkar_D3_Position001/04_S100A4_CAR-Jurkar_D3_Position001_t096_zproj::instance_0005",
+    "Data-Yichao-9/S100A4_CAR-Jurkar_D3_Position001/04_S100A4_CAR-Jurkar_D3_Position001_t020_zproj::instance_0001",
+    "Data-Yichao-3/Experiment_1_Day_4_Position002/09_Experiment_1_Day_4_Position002_t011_zproj::instance_0006",
+    "Data-Yichao-2/N39_TriRep_DF_D2_Position001/05_N39_TriRep_DF_D2_Position001_t011_zproj::instance_0003",
+    "Data-Yichao-5/Goblet_DF_D2_Position006/08_Goblet_DF_D2_Position006_t024_zproj::instance_0001",
+    "Data-Yichao-5/Goblet_DF_D2_Position006/08_Goblet_DF_D2_Position006_t002_zproj::instance_0001"
+  ],
+  "selected_saliency_examples": [
+    "Data-Yichao-9/S100A4_CAR-Jurkar_D3_Position001/04_S100A4_CAR-Jurkar_D3_Position001_t096_zproj::instance_0005",
+    "Data-Yichao-9/S100A4_CAR-Jurkar_D3_Position001/04_S100A4_CAR-Jurkar_D3_Position001_t022_zproj::instance_0002",
+    "Data-Yichao-6/Goblet_DF_D4_Position005/01_Goblet_DF_D4_Position005_t018_zproj::instance_0001",
+    "Data-Yichao-5/Goblet_DF_D2_Position006/08_Goblet_DF_D2_Position006_t002_zproj::instance_0001"
+  ]
+}
