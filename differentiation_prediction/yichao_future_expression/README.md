@@ -29,6 +29,9 @@ This folder trains real models from the projected Yichao organoid instance datab
 5. `train_future_expression.py`
    Trains a sequence model for early prediction: `B(D1...Dk) -> future fluorescence`. By default the dataset builder excludes prefixes that are already fluorescence-positive, so this stage tests whether pre-expression brightfield morphology predicts later expression.
 
+6. `train_joint_b2f_future.py`
+   Trains the realistic joint model: same-time `B_k -> F_k` as an auxiliary B2F task plus `B_0...B_k -> F_future` image and scalar prediction. This is the main path for testing whether brightfield history predicts later fluorescence expression.
+
 ## Run
 
 Start or resume the full GPU run in tmux:
@@ -42,6 +45,19 @@ Attach:
 
 ```bash
 tmux attach -t yichao_future_expression
+```
+
+Start or resume the joint B2F/future training run:
+
+```bash
+cd /home/lachlan/ProjectsLFS/OrganoidAgent
+bash differentiation_prediction/yichao_future_expression/resume_joint_b2f_future_tmux.sh
+```
+
+Attach:
+
+```bash
+tmux attach -t yichao_joint_b2f_future
 ```
 
 Monitor logs:
@@ -60,3 +76,5 @@ tail -f /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_e
 - Future prediction metrics: `analysis-outputs/yichao_future_expression/stage2_future_expression/test_metrics.json`
 - Future prediction table: `analysis-outputs/yichao_future_expression/stage2_future_expression/test_predictions.csv`
 - Future feature ablation: `analysis-outputs/yichao_future_expression/stage2_future_expression/feature_ablation_importance.csv`
+- Joint B2F/future report: `analysis-outputs/yichao_future_expression/stage3_joint_b2f_future/joint_b2f_future_report.md`
+- Joint B2F/future predictions: `analysis-outputs/yichao_future_expression/stage3_joint_b2f_future/predictions/`
