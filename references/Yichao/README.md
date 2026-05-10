@@ -1,5 +1,9 @@
 # Yichao Dataset Structure for Brightfield-to-Fluorescence Pix2pix
 
+Related future-prediction strategy:
+
+- `references/Yichao/future_fluorescence_forecasting_strategy.md`
+
 This note documents the current Yichao dataset layout in:
 
 - `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1`
