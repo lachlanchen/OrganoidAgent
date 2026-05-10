@@ -75,7 +75,7 @@ class ResidualGNBlock(nn.Module):
         self.norm1 = nn.GroupNorm(_group_count(out_channels), out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False)
         self.norm2 = nn.GroupNorm(_group_count(out_channels), out_channels)
-        self.act = nn.SiLU(inplace=True)
+        self.act = nn.GELU()
         self.dropout = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
         self.skip = (
             nn.Identity()
@@ -86,7 +86,7 @@ class ResidualGNBlock(nn.Module):
         self.squeeze = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(out_channels, squeeze_channels, 1),
-            nn.SiLU(inplace=True),
+            nn.GELU(),
             nn.Conv2d(squeeze_channels, out_channels, 1),
             nn.Sigmoid(),
         )
@@ -105,7 +105,7 @@ class DownsampleBlock(nn.Module):
         super().__init__()
         self.down = nn.Conv2d(in_channels, out_channels, 3, stride=2, padding=1, bias=False)
         self.norm = nn.GroupNorm(_group_count(out_channels), out_channels)
-        self.act = nn.SiLU(inplace=True)
+        self.act = nn.GELU()
         self.block = ResidualGNBlock(out_channels, out_channels, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -150,7 +150,7 @@ class StrongB2FResUNet(nn.Module):
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Linear(c * 12, c * 4),
-            nn.SiLU(inplace=True),
+            nn.GELU(),
             nn.Dropout(0.15),
             nn.Linear(c * 4, 3),
         )

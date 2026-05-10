@@ -36,7 +36,7 @@ Main changes:
 - Defaults to 384 x 384 training.
 - Uses a larger residual GroupNorm U-Net with squeeze-excitation.
 - Uses pixel imbalance-aware training for sparse fluorescence.
-- Uses a weighted pixel BCE term for signal regions.
+- Uses continuous-intensity fluorescence loss instead of turning the target into a low-threshold binary mask.
 - Uses Charbonnier intensity loss, SSIM-like structure loss, and Sobel edge loss.
 - Uses scalar auxiliary targets for expression status, peak fluorescence, and total fluorescence.
 - Supports image-level balanced sampling for rare expression examples.
@@ -77,6 +77,24 @@ The tmux helper starts this command:
 ```bash
 /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_future_expression/resume_strong_b2f_tmux.sh
 ```
+
+## May 11 progress check and correction
+
+The first long 384 run reached epoch 47, then stopped with:
+
+```text
+TypeError: silu() keywords must be strings
+```
+
+The run also showed flat validation metrics from epoch 1 through epoch 45. The validation panels showed that the model was producing a broad green brightfield-like reconstruction rather than sparse true fluorescence. That means the issue was not simply insufficient epoch count.
+
+The fix is:
+
+- Remove the channels-last training path from the tmux command because it likely triggered the PyTorch/SiLU runtime path.
+- Replace the strong model's SiLU activations with GELU.
+- Stop using low-threshold binary fluorescence BCE as the main pixel signal. A low threshold made most organoid pixels count as fluorescent and encouraged broad green predictions.
+- Use continuous target-intensity weighting: bright fluorescence pixels get larger weight, but dark/background pixels still pull the prediction down.
+- Reduce scalar auxiliary weight so image reconstruction drives the run.
 
 ## What success should look like
 
