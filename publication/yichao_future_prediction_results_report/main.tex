@@ -25,7 +25,7 @@
 
 \newcommand{\outputroot}{/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression}
 
-\title{\textbf{Negative Result Report: Brightfield-to-Fluorescence Feasibility Does Not Transfer to Reliable Future Expression Prediction}}
+\title{\textbf{Yichao Future Fluorescence Prediction: Current Results and Improvement Strategy}}
 \author{OrganoidAgent Yichao analysis}
 \date{May 11, 2026}
 
@@ -33,7 +33,7 @@
 \maketitle
 
 \begin{abstract}
-This report documents the completed Yichao projected-organoid prediction experiments with an explicit negative-result interpretation. Same-time brightfield-to-fluorescence prediction ($B_t \rightarrow F_t$) is feasible: the held-out test set achieved image MAE 0.1077, positive AUROC 0.728, and fluorescence peak Pearson correlation 0.685. However, future fluorescence prediction from earlier brightfield ($B_{0:k} \rightarrow F_{p>k}$) is not solved by the current models. The scalar future model achieved only AUROC 0.228 and future peak Pearson 0.134. The joint model, despite combining same-time B2F supervision and dense future fluorescence prediction, achieved AUROC 0.223 and future peak Pearson -0.049 on the held-out test split. Visual outputs confirm the problem: predicted future fluorescence is not close to the true future fluorescence. The correct conclusion is that the current data/track/target design supports same-time morphology-to-fluorescence feasibility, but does not yet support robust early future expression prediction.
+This report documents the completed Yichao projected-organoid prediction experiments and the next technical direction. Same-time brightfield-to-fluorescence prediction ($B_t \rightarrow F_t$) is feasible: the held-out test set achieved image MAE 0.1077, expression AUROC 0.728, and fluorescence peak Pearson correlation 0.685. Future fluorescence prediction from earlier brightfield ($B_{0:k} \rightarrow F_{p>k}$) remains unsolved by the current models. The separate scalar future model achieved AUROC 0.228 and future peak Pearson 0.134. The joint model, which combines same-time B2F supervision with dense future fluorescence prediction, achieved AUROC 0.223 and future peak Pearson -0.049 on the held-out test split. Visual outputs show that predicted future fluorescence is not close to true future fluorescence. The current evidence supports same-time morphology-to-fluorescence learning, but indicates that future expression prediction needs cleaner temporal targets, stronger longitudinal supervision, and a more suitable model design.
 \end{abstract}
 
 \section{Purpose}
@@ -47,7 +47,7 @@ The goal was to test four progressively harder questions:
 \item Can a joint model use same-time B2F as auxiliary supervision to improve future prediction?
 \end{enumerate}
 
-Only the first two questions currently have a positive answer. The future-prediction questions produced negative results on held-out test data.
+The first two questions are supported by the current experiments. The future-prediction questions are not yet solved on held-out test data.
 
 \section{Data and Splits}
 
@@ -83,7 +83,7 @@ The scalar future model takes a brightfield prefix and morphology features:
 \begin{equation}
 P_k = \{(B_j, X_j)\}_{j=k-L+1}^{k},
 \end{equation}
-and predicts future-positive status, future peak fluorescence, and future fluorescence AUC:
+and predicts future-expression status, future peak fluorescence, and future fluorescence AUC:
 \begin{equation}
 (\hat{a}_p,\hat{r}_p,\hat{q}_p) = H_\phi(P_k), \quad p > k.
 \end{equation}
@@ -103,22 +103,22 @@ with objective:
 +0.25\mathcal{L}_{\mathrm{scalar}}.
 \end{equation}
 
-The intended intuition was reasonable: because $B_t \rightarrow F_t$ is learnable, auxiliary B2F might regularize the representation used for $B_{0:k} \rightarrow F_p$. The held-out test result shows that this was not enough.
+The intended intuition was reasonable: because $B_t \rightarrow F_t$ is learnable, auxiliary B2F might regularize the representation used for $B_{0:k} \rightarrow F_p$. The held-out test result shows that this auxiliary supervision alone was not enough.
 
 \section{Quantitative Results}
 
 \begin{table}[H]
 \centering
-\caption{Final held-out test metrics. The B2F task works; both future-prediction tasks fail to generalize.}
+\caption{Final held-out test metrics. The B2F task works; both future-prediction tasks do not yet generalize.}
 \begin{tabular}{lccc}
 \toprule
 Metric & Same-time B2F & Scalar future & Joint future \\
 \midrule
 Test examples & 1,088 & 633 & 633 \\
-Positive examples & 14 & not recorded in metric JSON & 11 \\
+Expression examples & 14 & not recorded in metric JSON & 11 \\
 Image MAE & 0.1077 & not predicted & 0.3112 \\
 Image PSNR & 14.18 dB & not predicted & 7.95 dB \\
-Positive AUROC & 0.728 & 0.228 & 0.223 \\
+Expression AUROC & 0.728 & 0.228 & 0.223 \\
 Average precision & 0.110 & 0.0156 & 0.0127 \\
 Peak Pearson & 0.685 & 0.134 & -0.049 \\
 AUC Pearson & not applicable & 0.105 & 0.075 \\
@@ -127,14 +127,14 @@ AUC Pearson & not applicable & 0.105 & 0.075 \\
 \end{table}
 
 \paragraph{Interpretation.}
-The future classifiers are worse than useful random-ranking baselines on the held-out test set. The joint model's dense future fluorescence prediction also fails visually and quantitatively: image MAE is high, PSNR is low, and the prediction panels show outputs that do not match the true future fluorescence.
+The future classifiers are worse than a useful ranking model on the held-out test set. The joint model's dense future fluorescence prediction also does not work visually or quantitatively: image MAE is high, PSNR is low, and the prediction panels show outputs that do not match the true future fluorescence.
 
 \section{Same-Time B2F Is Feasible}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{figures/fig1_b2f_performance_summary.png}
-\caption{Same-time B2F performance summary. This is the positive part of the experiment: the predicted fluorescence intensity has meaningful held-out correlation with true fluorescence.}
+\caption{Same-time B2F performance summary. The predicted fluorescence intensity has meaningful held-out correlation with true fluorescence.}
 \label{fig:b2f-summary}
 \end{figure}
 
@@ -188,15 +188,15 @@ These features are plausible and useful for same-time fluorescence distinction. 
 \begin{subfigure}[b]{0.49\linewidth}
 \centering
 \includegraphics[width=\linewidth]{figures/fig5_scalar_future_score_histogram.png}
-\caption{Future-positive score distribution}
+\caption{Future-expression score distribution}
 \end{subfigure}
 \caption{Scalar future baseline outputs. The prediction is not close enough to truth for useful future expression prediction.}
 \label{fig:scalar-future}
 \end{figure}
 
-The scalar future model is essentially a negative baseline. It does not separate future-positive from future-negative examples and it does not predict the future fluorescence peak accurately enough to support biological inference.
+The scalar future model is a weak baseline. It does not separate future-expressing from non-expressing examples and it does not predict the future fluorescence peak accurately enough to support biological inference.
 
-\section{Joint Future Prediction Also Fails}
+\section{Joint Future Prediction}
 
 \begin{figure}[H]
 \centering
@@ -219,30 +219,53 @@ The scalar future model is essentially a negative baseline. It does not separate
 \label{fig:joint-ablation}
 \end{figure}
 
-The joint model did not rescue the future task. The most important observation is not just the weak scalar metrics, but the visual mismatch in Fig.~\ref{fig:joint-predictions}: the predicted future fluorescence is not close to the true future fluorescence.
+The joint model did not solve the future task. The most important observation is not just the weak scalar metrics, but the visual mismatch in Fig.~\ref{fig:joint-predictions}: the predicted future fluorescence is not close to the true future fluorescence.
 
 \section{Likely Failure Causes}
 
-The current negative result is technically useful. It narrows the problem:
+The current result is technically useful. It narrows the problem:
 
 \begin{enumerate}
 \item \textbf{Same-time signal exists, but future signal may not be present early enough.} B2F learns $B_t \rightarrow F_t$, but this does not guarantee $B_{0:k} \rightarrow F_p$.
-\item \textbf{Future-positive examples are rare.} The held-out joint test split has only 11 future-positive examples.
+\item \textbf{Future-expression examples are rare.} The held-out joint test split has only 11 future-expression examples.
 \item \textbf{Track linking is approximate.} Any wrong organoid association across time directly corrupts future targets.
 \item \textbf{Last-frame target may be a poor biological endpoint.} The last available future frame may not equal the biologically most informative or peak-expression frame.
 \item \textbf{Dataset/domain split effects are strong.} Validation performance looked better than held-out test performance, indicating nontrivial distribution shift.
 \end{enumerate}
 
-\section{Recommended Next Step}
+\section{Model Improvement Strategy}
 
-Do not increase model complexity first. The next scientifically realistic step is to improve the data target:
+The current result does not justify only scaling the current network. A larger model can overfit the same weak temporal supervision more easily. The better direction is a staged model with stronger temporal targets:
 
 \begin{enumerate}
-\item Manually verify a subset of linked tracks, especially positive trajectories.
+\item \textbf{Keep B2F as pretraining and auxiliary supervision.} Train an image model on $B_t \rightarrow F_t$ first because that task has demonstrated signal. Use the encoder weights for future prediction instead of learning future representations from scratch.
+\item \textbf{Use joint fine-tuning, not pure separate training.} Separate B2F is useful for representation learning, but the final future model should be joint: current fluorescence reconstruction regularizes the encoder while the future head learns $B_{0:k} \rightarrow F_p$.
+\item \textbf{Increase model capacity only after target cleanup.} A U-Net/ResNet hybrid or ConvNeXt-style encoder with temporal pooling is reasonable, but the first bottleneck is likely target noise and rare expression examples, not insufficient parameter count.
+\item \textbf{Use larger image sizes when feasible.} Default 256$\times$256 is useful for speed and baseline comparison, but elongated peripheral fluorescent cells and internal void morphology may be compressed too much. The next run should test 384$\times$384 or 512$\times$512 crops with mixed precision and gradient accumulation.
+\item \textbf{Predict biologically better targets.} Replace only-last-frame prediction with peak future expression, first-expression time, and horizon-specific targets such as $D_k \rightarrow D_{k+1}$, $D_k \rightarrow D_{k+2}$, and $D_k \rightarrow D_{\mathrm{peak}}$.
+\item \textbf{Balance expression examples.} Oversample rare future-expression tracks and use ranking/contrastive losses so the model learns which early morphologies precede later expression rather than being dominated by non-expressing examples.
+\end{enumerate}
+
+The most practical next architecture is:
+\begin{equation}
+z_k = \mathrm{TemporalEncoder}\left(\mathrm{ImageEncoder}(B_1),\ldots,\mathrm{ImageEncoder}(B_k), X_{1:k}\right),
+\end{equation}
+\begin{equation}
+(\hat{F}_k, \hat{F}_{p}, \hat{y}_{p}, \hat{s}_{p}) =
+\mathrm{DecoderHeads}(z_k),
+\end{equation}
+where $\hat{F}_k$ is current fluorescence reconstruction, $\hat{F}_p$ is future fluorescence, $\hat{y}_p$ is future-expression probability, and $\hat{s}_p$ is scalar future intensity. This keeps the useful B2F signal while forcing the shared representation to serve the future task.
+
+\section{Recommended Data Step}
+
+Do not increase model complexity before checking the temporal labels. The next scientifically realistic step is to improve the data target:
+
+\begin{enumerate}
+\item Manually verify a subset of linked tracks, especially fluorescence-expressing trajectories.
 \item Train/evaluate by horizon: short future, medium future, long future.
 \item Compare \texttt{last\_future} targets with \texttt{peak\_future} targets.
-\item Build a cleaner positive-control dataset where Yichao confirms which structures are true positive cells versus debris/background.
-\item Keep same-time B2F as a validated auxiliary or pretraining task, but do not claim future prediction yet.
+\item Build a cleaner expression-control dataset where Yichao confirms which structures are true fluorescent cells versus debris/background.
+\item Keep same-time B2F as a validated auxiliary or pretraining task, but do not claim future prediction until horizon-specific held-out tests improve.
 \end{enumerate}
 
 \section{Reproducibility}
@@ -265,13 +288,13 @@ Main code folder:
 
 \section{Conclusion}
 
-The honest conclusion is:
+The current conclusion is:
 
 \begin{quote}
-The current Yichao projected dataset supports same-time brightfield-to-fluorescence prediction and morphology-based explanation, but it does not yet support reliable future fluorescence expression prediction from earlier brightfield. The separate and joint future models are negative results on held-out test data.
+The current Yichao projected dataset supports same-time brightfield-to-fluorescence prediction and morphology-based explanation, but it does not yet support reliable future fluorescence expression prediction from earlier brightfield. The report includes both separate training results and joint training results; the joint model is the most relevant current future-prediction result, and it still does not match true future fluorescence on held-out examples.
 \end{quote}
 
-This is still a useful result because it prevents overclaiming and clarifies the next experimental requirement: cleaner longitudinal tracking and positive-control future-expression targets.
+This is still useful because it prevents overclaiming and clarifies the next experimental requirement: cleaner longitudinal tracking, expression-control examples, horizon-specific targets, and a stronger temporal model initialized from the successful B2F task.
 
 \begin{thebibliography}{9}
 
