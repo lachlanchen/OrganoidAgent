@@ -168,6 +168,73 @@ class StrongB2FResUNet(nn.Module):
         return self.out_logits(d1), self.scalar_head(b)
 
 
+class Pix2PixDownsample(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, *, normalize: bool = True) -> None:
+        super().__init__()
+        layers: list[nn.Module] = [nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1, bias=False)]
+        if normalize:
+            layers.append(nn.InstanceNorm2d(out_channels, affine=True))
+        layers.append(nn.ELU(inplace=True))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+class Pix2PixUpsample(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, *, dropout: float = 0.0) -> None:
+        super().__init__()
+        layers: list[nn.Module] = [
+            nn.ConvTranspose2d(in_channels, out_channels, 4, stride=2, padding=1, bias=False),
+            nn.InstanceNorm2d(out_channels, affine=True),
+        ]
+        if dropout > 0:
+            layers.append(nn.Dropout(dropout))
+        layers.append(nn.ELU(inplace=True))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+
+class Pix2PixB2FUNet(nn.Module):
+    """Pix2pix-style U-Net adapted from the older working fluorescence code.
+
+    It keeps the old InstanceNorm + ELU encoder/decoder structure, but returns
+    logits so the modern weighted BCE/intensity loss can train stably.
+    """
+
+    def __init__(self, base_channels: int = 64, dropout: float = 0.5) -> None:
+        super().__init__()
+        c = base_channels
+        self.down1 = Pix2PixDownsample(1, c, normalize=False)
+        self.down2 = Pix2PixDownsample(c, c * 2)
+        self.down3 = Pix2PixDownsample(c * 2, c * 4)
+        self.down4 = Pix2PixDownsample(c * 4, c * 8)
+        self.up1 = Pix2PixUpsample(c * 8, c * 4, dropout=dropout)
+        self.up2 = Pix2PixUpsample(c * 8, c * 2)
+        self.up3 = Pix2PixUpsample(c * 4, c)
+        self.out_logits = nn.ConvTranspose2d(c * 2, 1, kernel_size=4, stride=2, padding=1)
+        self.scalar_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c * 8, c * 2),
+            nn.ELU(inplace=True),
+            nn.Dropout(0.15),
+            nn.Linear(c * 2, 3),
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        d1 = self.down1(x)
+        d2 = self.down2(d1)
+        d3 = self.down3(d2)
+        d4 = self.down4(d3)
+        u1 = torch.cat([self.up1(d4), d3], dim=1)
+        u2 = torch.cat([self.up2(u1), d2], dim=1)
+        u3 = torch.cat([self.up3(u2), d1], dim=1)
+        return self.out_logits(u3), self.scalar_head(d4)
+
+
 class SmallImageEncoder(nn.Module):
     def __init__(self, embedding_dim: int = 128, base_channels: int = 24) -> None:
         super().__init__()

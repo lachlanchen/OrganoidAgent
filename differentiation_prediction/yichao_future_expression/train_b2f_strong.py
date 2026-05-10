@@ -19,7 +19,7 @@ if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from differentiation_prediction.yichao_future_expression.datasets import B2FDataset
-from differentiation_prediction.yichao_future_expression.models import StrongB2FResUNet
+from differentiation_prediction.yichao_future_expression.models import Pix2PixB2FUNet, StrongB2FResUNet
 from differentiation_prediction.yichao_future_expression.utils import (
     DEFAULT_OUTPUT_ROOT,
     average_precision,
@@ -54,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weight-decay", type=float, default=2e-4)
     parser.add_argument("--base-channels", type=int, default=48)
     parser.add_argument("--dropout", type=float, default=0.05)
+    parser.add_argument("--architecture", choices=("strong_resunet", "pix2pix_unet"), default="strong_resunet")
     parser.add_argument("--signal-threshold", type=float, default=0.25)
     parser.add_argument("--signal-boost", type=float, default=12.0)
     parser.add_argument("--background-weight", type=float, default=0.25)
@@ -257,7 +258,7 @@ def b2f_loss(
 
 @torch.no_grad()
 def evaluate(
-    model: StrongB2FResUNet,
+    model: nn.Module,
     loader: DataLoader,
     device: torch.device,
     args: argparse.Namespace,
@@ -359,7 +360,7 @@ def evaluate(
 
 def checkpoint_payload(
     *,
-    model: StrongB2FResUNet,
+    model: nn.Module,
     optimizer: torch.optim.Optimizer,
     scaler: Any,
     epoch: int,
@@ -409,6 +410,14 @@ def set_optimizer_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
         group["lr"] = lr
 
 
+def build_model(args: argparse.Namespace) -> nn.Module:
+    if args.architecture == "strong_resunet":
+        return StrongB2FResUNet(base_channels=args.base_channels, dropout=args.dropout)
+    if args.architecture == "pix2pix_unet":
+        return Pix2PixB2FUNet(base_channels=args.base_channels, dropout=args.dropout)
+    raise ValueError(f"Unsupported architecture: {args.architecture}")
+
+
 def write_report(path: Path, payload: dict[str, Any]) -> None:
     lines = [
         "# Strong B2F Training Run",
@@ -429,6 +438,7 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
         f"- Epoch: `{payload.get('epoch')}`",
         f"- Best score: `{payload.get('best_score')}`",
         f"- Best epoch: `{payload.get('best_epoch')}`",
+        f"- Architecture: `{payload.get('architecture')}`",
         f"- Output folder: `{payload.get('output_root')}`",
         "",
     ]
@@ -469,7 +479,7 @@ def main() -> int:
     scalar_bce = nn.BCEWithLogitsLoss(pos_weight=scalar_pos_weight)
     huber = nn.SmoothL1Loss()
 
-    model = StrongB2FResUNet(base_channels=args.base_channels, dropout=args.dropout).to(device)
+    model = build_model(args).to(device)
     if args.channels_last:
         model = model.to(memory_format=torch.channels_last)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -497,6 +507,7 @@ def main() -> int:
             "amp_requested": bool(args.amp),
             "amp_enabled": bool(use_amp),
             "sentinel_parameter": sentinel_name,
+            "architecture": args.architecture,
         },
     )
 
@@ -660,6 +671,7 @@ def main() -> int:
                 "epoch": epoch,
                 "best_score": best_score,
                 "best_epoch": best_epoch,
+                "architecture": args.architecture,
                 "output_root": str(args.output_root),
             },
         )
@@ -686,6 +698,7 @@ def main() -> int:
             "epoch": args.epochs,
             "best_score": best_score,
             "best_epoch": int(best.get("epoch", 0)),
+            "architecture": args.architecture,
             "output_root": str(args.output_root),
         },
     )

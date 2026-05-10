@@ -58,6 +58,7 @@ Main changes:
 - Reads original instance crops by default, not only the saved 256 crops.
 - Defaults to 384 x 384 training.
 - Uses a larger residual GroupNorm U-Net with squeeze-excitation.
+- Also supports `--architecture pix2pix_unet`, an InstanceNorm + ELU pix2pix-style U-Net adapted from the older working fluorescence code.
 - Uses pixel imbalance-aware training for sparse fluorescence.
 - Uses continuous-intensity fluorescence loss instead of turning the target into a low-threshold binary mask.
 - Uses Charbonnier intensity loss, SSIM-like structure loss, and Sobel edge loss.
@@ -117,14 +118,15 @@ The intended long run is:
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
 conda activate organoid
 python -u -m differentiation_prediction.yichao_future_expression.train_b2f_strong \
-  --output-root /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_strong_384_v3_noamp_long \
+  --output-root /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_pix2pix_384_v1_noamp_long \
   --image-size 384 \
   --path-mode original_crop \
   --epochs 1000 \
   --batch-size 8 \
   --grad-accum-steps 2 \
-  --base-channels 48 \
-  --dropout 0.05 \
+  --architecture pix2pix_unet \
+  --base-channels 64 \
+  --dropout 0.5 \
   --lr 1.5e-4 \
   --min-lr 1e-6 \
   --balanced-sampler \
