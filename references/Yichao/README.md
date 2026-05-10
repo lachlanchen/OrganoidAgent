@@ -3,6 +3,7 @@
 Related future-prediction strategy:
 
 - `references/Yichao/future_fluorescence_forecasting_strategy.md`
+- `references/Yichao/future_fluorescence_forecasting_tex/main.tex`
 
 This note documents the current Yichao dataset layout in:
 
