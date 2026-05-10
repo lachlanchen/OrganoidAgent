@@ -20,10 +20,13 @@ This folder trains real models from the projected Yichao organoid instance datab
 2. `train_b2f.py`
    Trains a real multitask U-Net for same-time brightfield-to-fluorescence feasibility. It saves checkpoints, metrics, prediction panels, and test metrics under `stage1_b2f/`.
 
-3. `analyze_features.py`
+3. `evaluate_b2f_performance.py`
+   Loads the best B2F checkpoint and writes reproducible held-out metrics, prediction tables, ROC/PR plots, predicted-vs-true fluorescence scatter plots, selected B2F prediction panels, and feature-summary visualizations under `stage1_b2f_evaluation/`.
+
+4. `analyze_features.py`
    Trains a small explicit-feature model and permutation-importance analysis for morphology features such as area, diameter, circularity, support ratio, edge strength, and time index. It saves feature importance plots under `stage1_feature_analysis/`.
 
-4. `train_future_expression.py`
+5. `train_future_expression.py`
    Trains a sequence model for early prediction: `B(D1...Dk) -> future fluorescence`. By default the dataset builder excludes prefixes that are already fluorescence-positive, so this stage tests whether pre-expression brightfield morphology predicts later expression.
 
 ## Run
@@ -51,6 +54,8 @@ tail -f /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_e
 
 - B2F predictions: `analysis-outputs/yichao_future_expression/stage1_b2f/predictions/`
 - B2F metrics: `analysis-outputs/yichao_future_expression/stage1_b2f/test_metrics.json`
+- B2F evaluation report: `analysis-outputs/yichao_future_expression/stage1_b2f_evaluation/b2f_evaluation_report.md`
+- B2F evaluation plots: `analysis-outputs/yichao_future_expression/stage1_b2f_evaluation/plots/`
 - Feature explanations: `analysis-outputs/yichao_future_expression/stage1_feature_analysis/feature_importance.csv`
 - Future prediction metrics: `analysis-outputs/yichao_future_expression/stage2_future_expression/test_metrics.json`
 - Future prediction table: `analysis-outputs/yichao_future_expression/stage2_future_expression/test_predictions.csv`
