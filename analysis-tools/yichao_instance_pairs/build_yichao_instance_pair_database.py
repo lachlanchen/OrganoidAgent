@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sqlite3
 from pathlib import Path
 
@@ -303,11 +304,21 @@ def summarize(image_rows: list[dict[str, object]], instance_rows: list[dict[str,
     }
 
 
+def find_record_paths(root: Path, filename: str) -> list[Path]:
+    paths: list[Path] = []
+    if not root.exists():
+        return paths
+    for dirpath, _, filenames in os.walk(root):
+        if filename in filenames:
+            paths.append(Path(dirpath) / filename)
+    return sorted(paths)
+
+
 def main() -> int:
     args = parse_args()
     output_root = Path(args.output_root).resolve()
-    image_record_paths = sorted((output_root / "images").rglob("image_record.json"))
-    instance_record_paths = sorted((output_root / "instances").rglob("instance_record.json"))
+    image_record_paths = find_record_paths(output_root / "images", "image_record.json")
+    instance_record_paths = find_record_paths(output_root / "instances", "instance_record.json")
     if not image_record_paths:
         raise RuntimeError(f"No image records found under {output_root / 'images'}")
 
