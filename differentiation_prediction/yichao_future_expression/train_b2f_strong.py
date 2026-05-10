@@ -70,6 +70,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--panel-every", type=int, default=20)
     parser.add_argument("--save-every", type=int, default=20)
     parser.add_argument("--keep-periodic", type=int, default=8)
+    parser.add_argument("--early-stop", action="store_true")
+    parser.add_argument("--early-stop-metric", choices=("score", "loss", "masked_mae", "signal_f1", "peak_pearson"), default="score")
+    parser.add_argument("--early-stop-patience-evals", type=int, default=10)
+    parser.add_argument("--early-stop-min-delta", type=float, default=1e-3)
+    parser.add_argument("--early-stop-min-epochs", type=int, default=40)
     parser.add_argument("--amp", action="store_true")
     parser.add_argument("--channels-last", action="store_true")
     parser.add_argument("--resume", action="store_true")
@@ -398,6 +403,106 @@ def select_score(metrics: dict[str, float]) -> float:
     return -float(loss) + 0.05 * float(signal_f1) + 0.01 * float(peak)
 
 
+def validation_metrics_from_row(row: dict[str, Any]) -> dict[str, float] | None:
+    if "val_loss" not in row:
+        return None
+    metrics: dict[str, float] = {}
+    for key, value in row.items():
+        if not key.startswith("val_"):
+            continue
+        try:
+            metrics[key[4:]] = float(value)
+        except (TypeError, ValueError):
+            metrics[key[4:]] = float("nan")
+    return metrics
+
+
+def early_stop_value(row: dict[str, Any], args: argparse.Namespace) -> float | None:
+    val_metrics = validation_metrics_from_row(row)
+    if val_metrics is None:
+        return None
+    if args.early_stop_metric == "score":
+        value = select_score(val_metrics)
+    else:
+        value = val_metrics.get(args.early_stop_metric, float("nan"))
+    if not math.isfinite(float(value)):
+        return None
+    return float(value)
+
+
+def early_stop_maximizes(metric: str) -> bool:
+    return metric in {"score", "signal_f1", "peak_pearson"}
+
+
+def is_early_stop_improvement(value: float, best_value: float | None, args: argparse.Namespace) -> bool:
+    if best_value is None:
+        return True
+    if early_stop_maximizes(args.early_stop_metric):
+        return value > best_value + args.early_stop_min_delta
+    return value < best_value - args.early_stop_min_delta
+
+
+def recover_early_stop_state(metrics: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+    best_value: float | None = None
+    best_epoch = 0
+    stale_evals = 0
+    eval_count = 0
+    last_eval_epoch = 0
+    last_value: float | None = None
+    for row in metrics:
+        value = early_stop_value(row, args)
+        if value is None:
+            continue
+        eval_count += 1
+        last_value = value
+        last_eval_epoch = int(row.get("epoch", 0))
+        if is_early_stop_improvement(value, best_value, args):
+            best_value = value
+            best_epoch = last_eval_epoch
+            stale_evals = 0
+        else:
+            stale_evals += 1
+    return {
+        "metric": args.early_stop_metric,
+        "best_value": best_value,
+        "best_epoch": best_epoch,
+        "stale_evals": stale_evals,
+        "eval_count": eval_count,
+        "last_eval_epoch": last_eval_epoch,
+        "last_value": last_value,
+        "maximizes": early_stop_maximizes(args.early_stop_metric),
+    }
+
+
+def should_early_stop(state: dict[str, Any], args: argparse.Namespace, epoch: int) -> bool:
+    return bool(
+        args.early_stop
+        and epoch >= args.early_stop_min_epochs
+        and int(state.get("stale_evals", 0)) >= args.early_stop_patience_evals
+        and int(state.get("eval_count", 0)) > 0
+    )
+
+
+def recover_best_state(metrics: list[dict[str, Any]], best_model_path: Path, fallback_score: float) -> tuple[float, int]:
+    if best_model_path.exists():
+        try:
+            best = torch.load(best_model_path, map_location="cpu", weights_only=False)
+            return float(best.get("best_score", fallback_score)), int(best.get("epoch", 0))
+        except Exception:
+            pass
+    best_score = fallback_score
+    best_epoch = 0
+    for row in metrics:
+        val_metrics = validation_metrics_from_row(row)
+        if val_metrics is None:
+            continue
+        score = select_score(val_metrics)
+        if score > best_score:
+            best_score = score
+            best_epoch = int(row.get("epoch", 0))
+    return best_score, best_epoch
+
+
 def cosine_lr(epoch: int, args: argparse.Namespace) -> float:
     if args.epochs <= 1:
         return args.min_lr
@@ -439,6 +544,9 @@ def write_report(path: Path, payload: dict[str, Any]) -> None:
         f"- Best score: `{payload.get('best_score')}`",
         f"- Best epoch: `{payload.get('best_epoch')}`",
         f"- Architecture: `{payload.get('architecture')}`",
+        f"- Early stop: `{payload.get('early_stop')}`",
+        f"- Early-stop metric: `{payload.get('early_stop_metric')}`",
+        f"- Early-stop stale evals: `{payload.get('early_stop_stale_evals')}`",
         f"- Output folder: `{payload.get('output_root')}`",
         "",
     ]
@@ -508,6 +616,11 @@ def main() -> int:
             "amp_enabled": bool(use_amp),
             "sentinel_parameter": sentinel_name,
             "architecture": args.architecture,
+            "early_stop": bool(args.early_stop),
+            "early_stop_metric": args.early_stop_metric,
+            "early_stop_patience_evals": args.early_stop_patience_evals,
+            "early_stop_min_delta": args.early_stop_min_delta,
+            "early_stop_min_epochs": args.early_stop_min_epochs,
         },
     )
 
@@ -519,8 +632,7 @@ def main() -> int:
             scaler.load_state_dict(checkpoint["scaler"])
             assert_healthy_amp_scale(scaler, use_amp, "checkpoint load")
         metrics = list(checkpoint.get("metrics_log", []))
-        best_score = float(checkpoint.get("best_score", best_score))
-        best_epoch = int(max([row.get("epoch", 0) for row in metrics], default=0))
+        best_score, best_epoch = recover_best_state(metrics, args.output_root / "best_model.pt", float(checkpoint.get("best_score", best_score)))
         start_epoch = int(checkpoint.get("epoch", 0)) + 1
         sentinel_name, sentinel_reference = first_parameter_snapshot(model)
         with metrics_path.open("w", encoding="utf-8") as handle:
@@ -528,6 +640,34 @@ def main() -> int:
                 handle.write(json.dumps(row) + "\n")
     elif metrics_path.exists():
         metrics_path.unlink()
+
+    early_state = recover_early_stop_state(metrics, args)
+    stopped_early = False
+    if should_early_stop(early_state, args, start_epoch - 1):
+        stopped_early = True
+        write_json(
+            args.output_root / "early_stop_summary.json",
+            {
+                "triggered": True,
+                "already_converged_on_resume": True,
+                "stop_epoch": start_epoch - 1,
+                "state": early_state,
+                "patience_evals": args.early_stop_patience_evals,
+                "min_delta": args.early_stop_min_delta,
+                "min_epochs": args.early_stop_min_epochs,
+            },
+        )
+        print(
+            json.dumps(
+                {
+                    "stage": "early_stop_already_converged_on_resume",
+                    "stop_epoch": start_epoch - 1,
+                    "early_stop": early_state,
+                }
+            ),
+            flush=True,
+        )
+        start_epoch = args.epochs + 1
 
     optimizer.zero_grad(set_to_none=True)
     for epoch in range(start_epoch, args.epochs + 1):
@@ -643,6 +783,39 @@ def main() -> int:
                 torch.save({"model": model.state_dict(), "epoch": epoch, "metrics": row, "best_score": best_score}, args.output_root / "best_model.pt")
                 if panel_path is not None:
                     shutil.copy2(panel_path, args.output_root / "predictions" / "val_best.png")
+            value = early_stop_value(row, args)
+            if value is not None:
+                if is_early_stop_improvement(value, early_state.get("best_value"), args):
+                    early_state = {
+                        "metric": args.early_stop_metric,
+                        "best_value": value,
+                        "best_epoch": epoch,
+                        "stale_evals": 0,
+                        "eval_count": int(early_state.get("eval_count", 0)) + 1,
+                        "last_eval_epoch": epoch,
+                        "last_value": value,
+                        "maximizes": early_stop_maximizes(args.early_stop_metric),
+                    }
+                else:
+                    early_state = {
+                        **early_state,
+                        "stale_evals": int(early_state.get("stale_evals", 0)) + 1,
+                        "eval_count": int(early_state.get("eval_count", 0)) + 1,
+                        "last_eval_epoch": epoch,
+                        "last_value": value,
+                    }
+                row.update(
+                    {
+                        "early_stop_metric": args.early_stop_metric,
+                        "early_stop_value": value,
+                        "early_stop_best_value": early_state.get("best_value"),
+                        "early_stop_best_epoch": early_state.get("best_epoch"),
+                        "early_stop_stale_evals": early_state.get("stale_evals"),
+                    }
+                )
+                if should_early_stop(early_state, args, epoch):
+                    row["early_stop_triggered"] = True
+                    stopped_early = True
 
         metrics.append(row)
         with metrics_path.open("a", encoding="utf-8") as handle:
@@ -672,10 +845,28 @@ def main() -> int:
                 "best_score": best_score,
                 "best_epoch": best_epoch,
                 "architecture": args.architecture,
+                "early_stop": bool(args.early_stop),
+                "early_stop_metric": early_state.get("metric"),
+                "early_stop_stale_evals": early_state.get("stale_evals"),
                 "output_root": str(args.output_root),
             },
         )
         print(json.dumps(row), flush=True)
+        if stopped_early:
+            write_json(
+                args.output_root / "early_stop_summary.json",
+                {
+                    "triggered": True,
+                    "already_converged_on_resume": False,
+                    "stop_epoch": epoch,
+                    "state": early_state,
+                    "patience_evals": args.early_stop_patience_evals,
+                    "min_delta": args.early_stop_min_delta,
+                    "min_epochs": args.early_stop_min_epochs,
+                },
+            )
+            print(json.dumps({"stage": "early_stop_triggered", "epoch": epoch, "early_stop": early_state}), flush=True)
+            break
 
     if not (args.output_root / "best_model.pt").exists():
         shutil.copy2(last_checkpoint_path, args.output_root / "best_model.pt")
@@ -692,17 +883,33 @@ def main() -> int:
         panel_path=args.output_root / "predictions" / "test_best.png",
     )
     write_json(args.output_root / "test_metrics.json", {**test_metrics, "best_epoch": int(best.get("epoch", 0))})
+    final_epoch = int(metrics[-1]["epoch"]) if metrics else int(best.get("epoch", 0))
     write_report(
         args.output_root / "TRAINING_REPORT.md",
         {
-            "epoch": args.epochs,
+            "epoch": final_epoch,
             "best_score": best_score,
             "best_epoch": int(best.get("epoch", 0)),
             "architecture": args.architecture,
+            "early_stop": bool(args.early_stop),
+            "early_stop_metric": early_state.get("metric"),
+            "early_stop_stale_evals": early_state.get("stale_evals"),
             "output_root": str(args.output_root),
         },
     )
-    print(json.dumps({"stage": "strong_b2f_finished", "test": test_metrics, "best_epoch": int(best.get("epoch", 0))}, indent=2), flush=True)
+    print(
+        json.dumps(
+            {
+                "stage": "strong_b2f_finished",
+                "test": test_metrics,
+                "best_epoch": int(best.get("epoch", 0)),
+                "final_epoch": final_epoch,
+                "stopped_early": stopped_early,
+            },
+            indent=2,
+        ),
+        flush=True,
+    )
     return 0
 
 

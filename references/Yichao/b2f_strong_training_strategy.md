@@ -69,6 +69,7 @@ Main changes:
 - Keeps only the most recent periodic checkpoints to avoid disk overload.
 - Logs `optimizer_steps`, gradient norm, parameter norm changes, and a sentinel parameter delta.
 - Fails loudly if AMP scale collapses instead of silently logging fake training.
+- Supports resumable early stopping based on validation convergence.
 
 ## Real learning gate
 
@@ -134,6 +135,11 @@ python -u -m differentiation_prediction.yichao_future_expression.train_b2f_stron
   --panel-every 20 \
   --save-every 20 \
   --keep-periodic 8 \
+  --early-stop \
+  --early-stop-metric score \
+  --early-stop-patience-evals 10 \
+  --early-stop-min-delta 0.001 \
+  --early-stop-min-epochs 40 \
   --resume
 ```
 
@@ -142,6 +148,14 @@ The tmux helper starts this command:
 ```bash
 /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_future_expression/resume_strong_b2f_tmux.sh
 ```
+
+Early stopping uses the same reconstruction-first validation score used for best-checkpoint selection:
+
+```text
+score = -val_loss + 0.05 * val_signal_f1 + 0.01 * val_peak_pearson
+```
+
+It stops after 10 validation checks without at least `0.001` score improvement, but only after 40 epochs. On resume, the trainer scans existing `metrics.jsonl`; it can therefore detect that a run has already converged and stop immediately rather than wasting GPU time.
 
 ## May 11 progress check and correction
 
