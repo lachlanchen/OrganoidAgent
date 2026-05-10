@@ -225,6 +225,9 @@ def pearson_corr(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 def plot_metric_lines(metrics: list[dict[str, Any]], path: Path, keys: Iterable[str]) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
     if not metrics:
