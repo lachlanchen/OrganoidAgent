@@ -90,6 +90,52 @@ def grad_scaler(enabled: bool):
     return torch.cuda.amp.GradScaler(enabled=enabled)
 
 
+def amp_scale_value(scaler: Any, enabled: bool) -> float | None:
+    if not enabled:
+        return None
+    try:
+        return float(scaler.get_scale())
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def assert_healthy_amp_scale(scaler: Any, enabled: bool, context: str) -> float | None:
+    value = amp_scale_value(scaler, enabled)
+    if value is not None and (not math.isfinite(value) or value <= 0.0):
+        raise RuntimeError(
+            "AMP GradScaler scale collapsed to a non-positive/non-finite value "
+            f"({value}) at {context}. Optimizer steps may be skipped silently. "
+            "Rerun this B2F trainer without --amp."
+        )
+    return value
+
+
+@torch.no_grad()
+def parameter_l2_norm(model: nn.Module) -> float:
+    total = 0.0
+    for param in model.parameters():
+        if param.requires_grad:
+            total += float(torch.sum(param.detach().float() * param.detach().float()).cpu())
+    return float(math.sqrt(total))
+
+
+@torch.no_grad()
+def first_parameter_snapshot(model: nn.Module) -> tuple[str, torch.Tensor]:
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            return name, param.detach().float().cpu().clone()
+    raise RuntimeError("Model has no trainable parameters.")
+
+
+@torch.no_grad()
+def first_parameter_delta(model: nn.Module, name: str, reference: torch.Tensor) -> float:
+    for current_name, param in model.named_parameters():
+        if current_name == name:
+            diff = param.detach().float().cpu() - reference
+            return float(torch.max(torch.abs(diff)).item())
+    return float("nan")
+
+
 def make_loader(dataset: B2FDataset, args: argparse.Namespace, shuffle: bool, *, sampler: WeightedRandomSampler | None = None) -> DataLoader:
     kwargs: dict[str, Any] = {
         "batch_size": args.batch_size,
@@ -428,6 +474,7 @@ def main() -> int:
         model = model.to(memory_format=torch.channels_last)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scaler = grad_scaler(use_amp)
+    sentinel_name, sentinel_reference = first_parameter_snapshot(model)
     metrics: list[dict[str, Any]] = []
     best_score = -1e18
     best_epoch = 0
@@ -447,6 +494,9 @@ def main() -> int:
             "train_expression_fraction": pos_count / max(len(train_ds), 1),
             "scalar_pos_weight": float(scalar_pos_weight.item()),
             "pixel_pos_weight": pixel_pos_weight,
+            "amp_requested": bool(args.amp),
+            "amp_enabled": bool(use_amp),
+            "sentinel_parameter": sentinel_name,
         },
     )
 
@@ -454,12 +504,14 @@ def main() -> int:
         checkpoint = torch.load(last_checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-        if "scaler" in checkpoint:
+        if "scaler" in checkpoint and use_amp:
             scaler.load_state_dict(checkpoint["scaler"])
+            assert_healthy_amp_scale(scaler, use_amp, "checkpoint load")
         metrics = list(checkpoint.get("metrics_log", []))
         best_score = float(checkpoint.get("best_score", best_score))
         best_epoch = int(max([row.get("epoch", 0) for row in metrics], default=0))
         start_epoch = int(checkpoint.get("epoch", 0)) + 1
+        sentinel_name, sentinel_reference = first_parameter_snapshot(model)
         with metrics_path.open("w", encoding="utf-8") as handle:
             for row in metrics:
                 handle.write(json.dumps(row) + "\n")
@@ -475,6 +527,12 @@ def main() -> int:
         seen = 0
         accum = 0
         component_sums: dict[str, float] = {}
+        optimizer_steps = 0
+        grad_norm_sum = 0.0
+        grad_norm_max = 0.0
+        amp_scale_min = float("inf")
+        amp_scale_max = 0.0
+        param_norm_before = parameter_l2_norm(model)
         for batch_index, batch in enumerate(train_loader):
             brightfield = batch["brightfield"].to(device, non_blocking=True)
             if args.channels_last:
@@ -500,24 +558,57 @@ def main() -> int:
                 component_sums[key] = component_sums.get(key, 0.0) + value * batch_size
             if accum >= args.grad_accum_steps:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
                 scaler.step(optimizer)
                 scaler.update()
+                scale_value = assert_healthy_amp_scale(scaler, use_amp, f"epoch {epoch} batch {batch_index + 1}")
+                if scale_value is not None:
+                    amp_scale_min = min(amp_scale_min, scale_value)
+                    amp_scale_max = max(amp_scale_max, scale_value)
+                grad_norm_float = float(grad_norm.detach().cpu()) if torch.is_tensor(grad_norm) else float(grad_norm)
+                if math.isfinite(grad_norm_float):
+                    grad_norm_sum += grad_norm_float
+                    grad_norm_max = max(grad_norm_max, grad_norm_float)
+                optimizer_steps += 1
                 optimizer.zero_grad(set_to_none=True)
                 accum = 0
             if args.limit_train_batches is not None and batch_index + 1 >= args.limit_train_batches:
                 break
         if accum > 0:
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
             scaler.step(optimizer)
             scaler.update()
+            scale_value = assert_healthy_amp_scale(scaler, use_amp, f"epoch {epoch} final accumulation")
+            if scale_value is not None:
+                amp_scale_min = min(amp_scale_min, scale_value)
+                amp_scale_max = max(amp_scale_max, scale_value)
+            grad_norm_float = float(grad_norm.detach().cpu()) if torch.is_tensor(grad_norm) else float(grad_norm)
+            if math.isfinite(grad_norm_float):
+                grad_norm_sum += grad_norm_float
+                grad_norm_max = max(grad_norm_max, grad_norm_float)
+            optimizer_steps += 1
             optimizer.zero_grad(set_to_none=True)
+        if optimizer_steps <= 0:
+            raise RuntimeError(f"No optimizer steps were executed in epoch {epoch}.")
+        param_norm_after = parameter_l2_norm(model)
+        sentinel_delta = first_parameter_delta(model, sentinel_name, sentinel_reference)
         row: dict[str, Any] = {
             "epoch": epoch,
             "train_loss": train_loss_sum / max(seen, 1),
             "lr": lr,
+            "optimizer_steps": optimizer_steps,
+            "grad_norm_mean": grad_norm_sum / max(optimizer_steps, 1),
+            "grad_norm_max": grad_norm_max,
+            "param_l2_norm_before": param_norm_before,
+            "param_l2_norm_after": param_norm_after,
+            "param_l2_norm_delta": param_norm_after - param_norm_before,
+            "sentinel_param": sentinel_name,
+            "sentinel_param_max_abs_delta_since_resume": sentinel_delta,
         }
+        if use_amp:
+            row["amp_scale_min"] = amp_scale_min if math.isfinite(amp_scale_min) else None
+            row["amp_scale_max"] = amp_scale_max if amp_scale_max > 0 else None
         row.update({f"train_{key}": value / max(seen, 1) for key, value in component_sums.items()})
 
         should_eval = epoch == 1 or epoch % args.eval_every == 0 or epoch == args.epochs

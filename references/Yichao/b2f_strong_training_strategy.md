@@ -13,6 +13,28 @@ The old B2F run had several avoidable weaknesses:
 - The fluorescence target is sparse relative to background, so ordinary image losses are dominated by easy dark/background pixels.
 - The future task inherits additional problems: approximate track linking, rare future-expression examples, and uncertain target policy (`last_future` may not be the biologically best target).
 
+## Root cause found on May 11, 2026
+
+The failed strong B2F run was not actually training. In:
+
+```text
+/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_strong_384_v2_long
+```
+
+`best_model.pt` and `last_model.pt` had identical model weights from epoch 1 to epoch 21:
+
+```text
+relative_l2_delta = 0.0
+max_abs_delta = 0.0
+changed_params = 0 / 127
+optimizer state entries = 0
+GradScaler scale = 0.0
+```
+
+The concrete failure was AMP, not model capacity: the CUDA AMP `GradScaler` collapsed to `0.0`, so `scaler.step(optimizer)` skipped optimizer updates while the loop kept logging epochs. This can make a run look alive while the model is frozen.
+
+The trainer now records optimizer-step diagnostics and raises if AMP scale becomes non-positive or non-finite. The tmux helper now launches the long run without `--amp`.
+
 ## Correct priority
 
 1. Train B2F properly first.
@@ -28,6 +50,7 @@ New code:
 ```text
 /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_future_expression/train_b2f_strong.py
 /home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_future_expression/resume_strong_b2f_tmux.sh
+/home/lachlan/ProjectsLFS/OrganoidAgent/differentiation_prediction/yichao_future_expression/debug_b2f_learning.py
 ```
 
 Main changes:
@@ -43,6 +66,48 @@ Main changes:
 - Selects the best checkpoint by reconstruction/signal quality, not AUROC alone.
 - Saves `last_model.pt` every epoch and sparse periodic checkpoints every 20 epochs.
 - Keeps only the most recent periodic checkpoints to avoid disk overload.
+- Logs `optimizer_steps`, gradient norm, parameter norm changes, and a sentinel parameter delta.
+- Fails loudly if AMP scale collapses instead of silently logging fake training.
+
+## Real learning gate
+
+Before trusting a long run, use the small overfit check:
+
+```bash
+cd /home/lachlan/ProjectsLFS/OrganoidAgent
+conda activate organoid
+python -m differentiation_prediction.yichao_future_expression.debug_b2f_learning \
+  --output-root /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/debug_b2f_pix2pix_overfit_128_real \
+  --image-size 128 \
+  --subset-size 32 \
+  --steps 120 \
+  --batch-size 4 \
+  --base-channels 48 \
+  --lr 0.001 \
+  --panel-every 30
+```
+
+This script uses real projected Yichao instance pairs, selects high-signal training examples, and overfits them with the older pix2pix-style U-Net architecture from:
+
+```text
+/home/lachlan/ProjectsLFS/OrganoidAgent/pixel2pixel_fluorescent/fluorescent/cyclegan_modules.py
+```
+
+The May 11 overfit check succeeded:
+
+```text
+initial_loss = 0.4587736614
+final_loss = 0.1359374505
+loss_drop_fraction = 0.7036938650
+final_param_delta_l2 = 15.1127531912
+learned = true
+```
+
+Output panels:
+
+```text
+/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/debug_b2f_pix2pix_overfit_128_real/panels
+```
 
 ## Long-run command
 
@@ -52,7 +117,7 @@ The intended long run is:
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
 conda activate organoid
 python -u -m differentiation_prediction.yichao_future_expression.train_b2f_strong \
-  --output-root /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_strong_384_long \
+  --output-root /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_future_expression/stage1_b2f_strong_384_v3_noamp_long \
   --image-size 384 \
   --path-mode original_crop \
   --epochs 1000 \
@@ -62,8 +127,6 @@ python -u -m differentiation_prediction.yichao_future_expression.train_b2f_stron
   --dropout 0.05 \
   --lr 1.5e-4 \
   --min-lr 1e-6 \
-  --amp \
-  --channels-last \
   --balanced-sampler \
   --eval-every 5 \
   --panel-every 20 \
@@ -90,6 +153,7 @@ The run also showed flat validation metrics from epoch 1 through epoch 45. The v
 
 The fix is:
 
+- Disable AMP for this trainer by default in the tmux helper. The previous AMP run had `GradScaler scale = 0.0` and no weight updates.
 - Remove the channels-last training path from the tmux command because it likely triggered the PyTorch/SiLU runtime path.
 - Replace the strong model's SiLU activations with GELU.
 - Stop using low-threshold binary fluorescence BCE as the main pixel signal. A low threshold made most organoid pixels count as fluorescent and encouraged broad green predictions.
