@@ -53,6 +53,10 @@ log() {
 }
 
 count_completed_images() {
+  if [[ ! -d "$OUTPUT_ROOT/images" ]]; then
+    printf '0\n'
+    return
+  fi
   if [[ ${#DATASETS[@]} -eq 0 ]]; then
     find "$OUTPUT_ROOT/images" -name image_record.json -type f 2>/dev/null | wc -l | tr -d ' '
     return
@@ -67,6 +71,10 @@ count_completed_images() {
 }
 
 count_failure_records() {
+  if [[ ! -d "$OUTPUT_ROOT/failures" ]]; then
+    printf '0\n'
+    return
+  fi
   if [[ ${#DATASETS[@]} -eq 0 ]]; then
     find "$OUTPUT_ROOT/failures" -name '*.json' -type f 2>/dev/null | wc -l | tr -d ' '
     return
@@ -195,4 +203,3 @@ while true; do
   log "sleeping ${RETRY_SLEEP_SECONDS}s before next projected chunk"
   sleep "$RETRY_SLEEP_SECONDS"
 done
-
