@@ -4,6 +4,7 @@ Related future-prediction strategy:
 
 - `references/Yichao/future_fluorescence_forecasting_strategy.md`
 - `references/Yichao/future_fluorescence_forecasting_tex/main.tex`
+- `references/Yichao/future_differentiation_path_research_plan.md`
 
 This note documents the current Yichao dataset layout in:
 
@@ -14,10 +15,10 @@ This note documents the current Yichao dataset layout in:
 
 The supervised mapping used in this repo is:
 
-- input: `c0` brightfield
-- target: `c1` fluorescence
+- input: `c1` brightfield
+- target: `c0` fluorescence
 
-This assumption is already used in:
+Older helper scripts may still contain the legacy assumption and should be checked before reuse:
 
 - `BioAgentUtils/prepare_yichao_pairs_to_npy.py`
 - `BioAgentUtils/train_pix2pix_yichao.py`
@@ -284,7 +285,8 @@ Meaning:
 - `Experiment_1_Day_2_Position001`: one monitored position / field of view
 - `t040`: timepoint 40
 - `z025`: z-plane 25
-- `c1`: channel 1, treated here as fluorescence
+- `c1`: channel 1, brightfield
+- matching `c0`: channel 0, fluorescence
 
 
 ### `N39_TriRep_DF_jpeg_all_by_position`
