@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-only", action="store_true", help="Render a pure grid of positive masks only, one mask tile per example.")
     parser.add_argument("--continuous-target", action="store_true", help="Render the third tile as mask times background-suppressed continuous fluorescence.")
     parser.add_argument("--continuous-scale", type=float, default=4.0, help="Display gain for background-suppressed continuous fluorescence.")
+    parser.add_argument("--continuous-plus-mask", action="store_true", help="Render B/F/continuous-suppressed-F/binary-mask as four columns per example.")
     parser.add_argument(
         "--continuous-mode",
         choices=["hard-mask", "soft-mask", "bg-only"],
@@ -212,6 +213,68 @@ def render_mask_only_grid(rows: list[dict[str, str]], output: Path, columns: int
     canvas.save(output)
 
 
+def render_continuous_plus_mask_grid(
+    rows: list[dict[str, str]],
+    output: Path,
+    groups: int,
+    row_count: int,
+    tile: int,
+    *,
+    continuous_scale: float,
+    continuous_mode: str,
+    soft_mask_dilate: int,
+    soft_mask_sigma: float,
+    soft_mask_floor: float,
+) -> None:
+    header_h = 34
+    label_h = 34
+    columns = groups * 4
+    width = columns * tile
+    height = header_h + row_count * (tile + label_h)
+    canvas = Image.new("RGB", (width, height), (16, 19, 22))
+    draw = ImageDraw.Draw(canvas)
+    font = load_font(12)
+    header_font = load_font(14)
+    for group in range(groups):
+        for offset, header in enumerate(("B", "F", "F-suppressed", "F-binary mask")):
+            x = (group * 4 + offset) * tile + 6
+            draw.text((x, 9), header, fill=(235, 240, 242), font=header_font)
+    for index, row in enumerate(rows[: row_count * groups]):
+        grid_row = index // groups
+        group = index % groups
+        x0 = group * 4 * tile
+        y0 = header_h + grid_row * (tile + label_h)
+        brightfield = gray_rgb(read_gray_float(Path(row["brightfield_crop_path"])))
+        fluorescence_arr = read_gray_float(Path(row["fluorescence_crop_path"]))
+        fluorescence = green_rgb(fluorescence_arr)
+        positive = read_gray_float(Path(row["positive_mask_path"]))
+        suppressed = green_rgb(
+            robust_bg_suppressed(
+                fluorescence_arr,
+                positive,
+                row,
+                continuous_scale,
+                mode=continuous_mode,
+                dilate=soft_mask_dilate,
+                sigma=soft_mask_sigma,
+                floor=soft_mask_floor,
+            )
+        )
+        binary_mask = gray_rgb(positive)
+        canvas.paste(resize(brightfield, tile), (x0, y0))
+        canvas.paste(resize(fluorescence, tile), (x0 + tile, y0))
+        canvas.paste(resize(suppressed, tile), (x0 + tile * 2, y0))
+        canvas.paste(resize(binary_mask, tile, mask=True), (x0 + tile * 3, y0))
+        label = (
+            f"{index:02d} {row.get('split')} {row.get('target_status')} "
+            f"pos={float(row.get('target_positive_fraction', 0)):.3f} "
+            f"{row.get('dataset')}"
+        )
+        draw.text((x0 + 4, y0 + tile + 5), label[:64], fill=(188, 196, 202), font=font)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output)
+
+
 def main() -> int:
     args = parse_args()
     rows = read_csv(args.manifest)
@@ -223,6 +286,19 @@ def main() -> int:
     selected = choose_rows(rows, count, args.seed, args.mix_status)
     if args.mask_only:
         render_mask_only_grid(selected, args.output, args.groups * 3, args.rows, args.tile)
+    elif args.continuous_plus_mask:
+        render_continuous_plus_mask_grid(
+            selected,
+            args.output,
+            args.groups,
+            args.rows,
+            args.tile,
+            continuous_scale=args.continuous_scale,
+            continuous_mode=args.continuous_mode,
+            soft_mask_dilate=args.soft_mask_dilate,
+            soft_mask_sigma=args.soft_mask_sigma,
+            soft_mask_floor=args.soft_mask_floor,
+        )
     else:
         render_grid(
             selected,
@@ -249,6 +325,7 @@ def main() -> int:
         handle.write(f"mix_status={args.mix_status}\n")
         handle.write(f"clean_mask_only={args.clean_mask_only}\n")
         handle.write(f"mask_only={args.mask_only}\n")
+        handle.write(f"continuous_plus_mask={args.continuous_plus_mask}\n")
         handle.write(f"continuous_target={args.continuous_target}\n")
         handle.write(f"continuous_scale={args.continuous_scale}\n")
         handle.write(f"continuous_mode={args.continuous_mode}\n")
