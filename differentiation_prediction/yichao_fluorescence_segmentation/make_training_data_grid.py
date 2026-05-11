@@ -40,6 +40,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--continuous-scale", type=float, default=4.0, help="Display gain for background-suppressed continuous fluorescence.")
     parser.add_argument("--continuous-plus-mask", action="store_true", help="Render B/F/continuous-suppressed-F/binary-mask as four columns per example.")
     parser.add_argument(
+        "--binary-mask-source",
+        choices=["positive", "suppressed", "suppressed-soft"],
+        default="positive",
+        help="Mask shown in the fourth column. 'suppressed' thresholds the rendered continuous target; 'suppressed-soft' uses the continuous target directly.",
+    )
+    parser.add_argument("--suppressed-mask-threshold", type=float, default=0.02, help="Threshold applied to the displayed suppressed target when --binary-mask-source=suppressed.")
+    parser.add_argument("--suppressed-mask-min-area", type=int, default=6, help="Remove smaller connected components from the suppressed-derived mask.")
+    parser.add_argument("--suppressed-mask-close", type=int, default=1, help="Binary closing iterations for the suppressed-derived mask.")
+    parser.add_argument("--suppressed-mask-dilate", type=int, default=0, help="Optional binary dilation iterations for the suppressed-derived mask.")
+    parser.add_argument(
         "--continuous-mode",
         choices=["hard-mask", "soft-mask", "bg-only"],
         default="hard-mask",
@@ -102,6 +112,29 @@ def robust_bg_suppressed(
     corrected = np.maximum(fluorescence - bg, 0.0)
     gate = continuous_gate(positive, mode=mode, dilate=dilate, sigma=sigma, floor=floor)
     return np.clip(corrected * gate * scale, 0.0, 1.0)
+
+
+def mask_from_suppressed(
+    suppressed: np.ndarray,
+    *,
+    threshold: float,
+    min_area: int,
+    close: int,
+    dilate: int,
+) -> np.ndarray:
+    mask = np.asarray(suppressed, dtype=np.float32) >= float(threshold)
+    if close > 0:
+        mask = ndi.binary_closing(mask, iterations=int(close))
+    if dilate > 0:
+        mask = ndi.binary_dilation(mask, iterations=int(dilate))
+    if min_area > 1 and bool(mask.any()):
+        labels, label_count = ndi.label(mask)
+        if label_count > 0:
+            counts = np.bincount(labels.reshape(-1))
+            keep = counts >= int(min_area)
+            keep[0] = False
+            mask = keep[labels]
+    return mask.astype(np.float32)
 
 
 def choose_rows(rows: list[dict[str, str]], count: int, seed: int, mix_status: bool) -> list[dict[str, str]]:
@@ -225,6 +258,11 @@ def render_continuous_plus_mask_grid(
     soft_mask_dilate: int,
     soft_mask_sigma: float,
     soft_mask_floor: float,
+    binary_mask_source: str,
+    suppressed_mask_threshold: float,
+    suppressed_mask_min_area: int,
+    suppressed_mask_close: int,
+    suppressed_mask_dilate: int,
 ) -> None:
     header_h = 34
     label_h = 34
@@ -235,8 +273,14 @@ def render_continuous_plus_mask_grid(
     draw = ImageDraw.Draw(canvas)
     font = load_font(12)
     header_font = load_font(14)
+    if binary_mask_source == "suppressed-soft":
+        mask_header = "F-soft mask"
+    elif binary_mask_source == "suppressed":
+        mask_header = "F-signal mask"
+    else:
+        mask_header = "F-binary mask"
     for group in range(groups):
-        for offset, header in enumerate(("B", "F", "F-suppressed", "F-binary mask")):
+        for offset, header in enumerate(("B", "F", "F-suppressed", mask_header)):
             x = (group * 4 + offset) * tile + 6
             draw.text((x, 9), header, fill=(235, 240, 242), font=header_font)
     for index, row in enumerate(rows[: row_count * groups]):
@@ -248,23 +292,34 @@ def render_continuous_plus_mask_grid(
         fluorescence_arr = read_gray_float(Path(row["fluorescence_crop_path"]))
         fluorescence = green_rgb(fluorescence_arr)
         positive = read_gray_float(Path(row["positive_mask_path"]))
-        suppressed = green_rgb(
-            robust_bg_suppressed(
-                fluorescence_arr,
-                positive,
-                row,
-                continuous_scale,
-                mode=continuous_mode,
-                dilate=soft_mask_dilate,
-                sigma=soft_mask_sigma,
-                floor=soft_mask_floor,
-            )
+        suppressed_arr = robust_bg_suppressed(
+            fluorescence_arr,
+            positive,
+            row,
+            continuous_scale,
+            mode=continuous_mode,
+            dilate=soft_mask_dilate,
+            sigma=soft_mask_sigma,
+            floor=soft_mask_floor,
         )
-        binary_mask = gray_rgb(positive)
+        suppressed = green_rgb(suppressed_arr)
+        if binary_mask_source == "suppressed-soft":
+            binary_mask_arr = suppressed_arr
+        elif binary_mask_source == "suppressed":
+            binary_mask_arr = mask_from_suppressed(
+                suppressed_arr,
+                threshold=suppressed_mask_threshold,
+                min_area=suppressed_mask_min_area,
+                close=suppressed_mask_close,
+                dilate=suppressed_mask_dilate,
+            )
+        else:
+            binary_mask_arr = positive
+        binary_mask = gray_rgb(binary_mask_arr)
         canvas.paste(resize(brightfield, tile), (x0, y0))
         canvas.paste(resize(fluorescence, tile), (x0 + tile, y0))
         canvas.paste(resize(suppressed, tile), (x0 + tile * 2, y0))
-        canvas.paste(resize(binary_mask, tile, mask=True), (x0 + tile * 3, y0))
+        canvas.paste(resize(binary_mask, tile, mask=binary_mask_source != "suppressed-soft"), (x0 + tile * 3, y0))
         label = (
             f"{index:02d} {row.get('split')} {row.get('target_status')} "
             f"pos={float(row.get('target_positive_fraction', 0)):.3f} "
@@ -298,6 +353,11 @@ def main() -> int:
             soft_mask_dilate=args.soft_mask_dilate,
             soft_mask_sigma=args.soft_mask_sigma,
             soft_mask_floor=args.soft_mask_floor,
+            binary_mask_source=args.binary_mask_source,
+            suppressed_mask_threshold=args.suppressed_mask_threshold,
+            suppressed_mask_min_area=args.suppressed_mask_min_area,
+            suppressed_mask_close=args.suppressed_mask_close,
+            suppressed_mask_dilate=args.suppressed_mask_dilate,
         )
     else:
         render_grid(
@@ -329,6 +389,11 @@ def main() -> int:
         handle.write(f"continuous_target={args.continuous_target}\n")
         handle.write(f"continuous_scale={args.continuous_scale}\n")
         handle.write(f"continuous_mode={args.continuous_mode}\n")
+        handle.write(f"binary_mask_source={args.binary_mask_source}\n")
+        handle.write(f"suppressed_mask_threshold={args.suppressed_mask_threshold}\n")
+        handle.write(f"suppressed_mask_min_area={args.suppressed_mask_min_area}\n")
+        handle.write(f"suppressed_mask_close={args.suppressed_mask_close}\n")
+        handle.write(f"suppressed_mask_dilate={args.suppressed_mask_dilate}\n")
         handle.write(f"soft_mask_dilate={args.soft_mask_dilate}\n")
         handle.write(f"soft_mask_sigma={args.soft_mask_sigma}\n")
         handle.write(f"soft_mask_floor={args.soft_mask_floor}\n")
