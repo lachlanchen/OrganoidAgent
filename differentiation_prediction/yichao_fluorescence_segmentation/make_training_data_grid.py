@@ -276,7 +276,7 @@ def render_continuous_plus_mask_grid(
     if binary_mask_source == "suppressed-soft":
         mask_header = "F-soft mask"
     elif binary_mask_source == "suppressed":
-        mask_header = "F-signal mask"
+        mask_header = "F-binary mask"
     else:
         mask_header = "F-binary mask"
     for group in range(groups):
