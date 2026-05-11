@@ -35,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mix-status", action="store_true", help="Sample positives, negatives, and overexposure-suppressed examples evenly when possible.")
     parser.add_argument("--clean-mask-only", action="store_true", help="Render the third tile as final positive mask only, without red ignore overlay.")
     parser.add_argument("--mask-only", action="store_true", help="Render a pure grid of positive masks only, one mask tile per example.")
+    parser.add_argument("--continuous-target", action="store_true", help="Render the third tile as mask times background-suppressed continuous fluorescence.")
+    parser.add_argument("--continuous-scale", type=float, default=4.0, help="Display gain for background-suppressed continuous fluorescence.")
     return parser.parse_args()
 
 
@@ -50,6 +52,12 @@ def mask_overlay(mask: np.ndarray, ignore: np.ndarray) -> Image.Image:
     base = Image.blend(base, pos, 0.95)
     base = Image.blend(base, ign, 0.55)
     return base
+
+
+def robust_bg_suppressed(fluorescence: np.ndarray, positive: np.ndarray, row: dict[str, str], scale: float) -> np.ndarray:
+    bg = float(row.get("target_bg_median") or 0.0)
+    corrected = np.maximum(fluorescence - bg, 0.0)
+    return np.clip(corrected * positive * scale, 0.0, 1.0)
 
 
 def choose_rows(rows: list[dict[str, str]], count: int, seed: int, mix_status: bool) -> list[dict[str, str]]:
@@ -73,7 +81,17 @@ def choose_rows(rows: list[dict[str, str]], count: int, seed: int, mix_status: b
     return selected[:count]
 
 
-def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count: int, tile: int, *, clean_mask_only: bool = False) -> None:
+def render_grid(
+    rows: list[dict[str, str]],
+    output: Path,
+    groups: int,
+    row_count: int,
+    tile: int,
+    *,
+    clean_mask_only: bool = False,
+    continuous_target: bool = False,
+    continuous_scale: float = 4.0,
+) -> None:
     header_h = 34
     label_h = 34
     columns = groups * 3
@@ -84,7 +102,8 @@ def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count
     font = load_font(12)
     header_font = load_font(14)
     for group in range(groups):
-        for offset, header in enumerate(("B", "F", "F-mask")):
+        third_header = "F-bg-suppressed" if continuous_target else "F-mask"
+        for offset, header in enumerate(("B", "F", third_header)):
             x = (group * 3 + offset) * tile + 6
             draw.text((x, 9), header, fill=(235, 240, 242), font=header_font)
     for index, row in enumerate(rows[: row_count * groups]):
@@ -93,10 +112,14 @@ def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count
         x0 = group * 3 * tile
         y0 = header_h + grid_row * (tile + label_h)
         brightfield = gray_rgb(read_gray_float(Path(row["brightfield_crop_path"])))
-        fluorescence = green_rgb(read_gray_float(Path(row["fluorescence_crop_path"])))
+        fluorescence_arr = read_gray_float(Path(row["fluorescence_crop_path"]))
+        fluorescence = green_rgb(fluorescence_arr)
         positive = read_gray_float(Path(row["positive_mask_path"]))
         ignore = read_gray_float(Path(row["ignore_mask_path"]))
-        mask = gray_rgb(positive) if clean_mask_only else mask_overlay(positive, ignore)
+        if continuous_target:
+            mask = green_rgb(robust_bg_suppressed(fluorescence_arr, positive, row, continuous_scale))
+        else:
+            mask = gray_rgb(positive) if clean_mask_only else mask_overlay(positive, ignore)
         canvas.paste(resize(brightfield, tile), (x0, y0))
         canvas.paste(resize(fluorescence, tile), (x0 + tile, y0))
         canvas.paste(resize(mask, tile, mask=True), (x0 + tile * 2, y0))
@@ -143,7 +166,16 @@ def main() -> int:
     if args.mask_only:
         render_mask_only_grid(selected, args.output, args.groups * 3, args.rows, args.tile)
     else:
-        render_grid(selected, args.output, args.groups, args.rows, args.tile, clean_mask_only=args.clean_mask_only)
+        render_grid(
+            selected,
+            args.output,
+            args.groups,
+            args.rows,
+            args.tile,
+            clean_mask_only=args.clean_mask_only,
+            continuous_target=args.continuous_target,
+            continuous_scale=args.continuous_scale,
+        )
     sidecar = args.output.with_suffix(".txt")
     with sidecar.open("w", encoding="utf-8") as handle:
         handle.write(f"manifest={args.manifest}\n")
@@ -155,6 +187,8 @@ def main() -> int:
         handle.write(f"mix_status={args.mix_status}\n")
         handle.write(f"clean_mask_only={args.clean_mask_only}\n")
         handle.write(f"mask_only={args.mask_only}\n")
+        handle.write(f"continuous_target={args.continuous_target}\n")
+        handle.write(f"continuous_scale={args.continuous_scale}\n")
         for index, row in enumerate(selected):
             handle.write(
                 f"{index}\t{row.get('split')}\t{row.get('target_status')}\t"
