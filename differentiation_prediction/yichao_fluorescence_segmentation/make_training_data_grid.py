@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260511)
     parser.add_argument("--split", choices=["all", "train", "val", "test"], default="train")
     parser.add_argument("--mix-status", action="store_true", help="Sample positives, negatives, and overexposure-suppressed examples evenly when possible.")
+    parser.add_argument("--clean-mask-only", action="store_true", help="Render the third tile as final positive mask only, without red ignore overlay.")
     return parser.parse_args()
 
 
@@ -71,7 +72,7 @@ def choose_rows(rows: list[dict[str, str]], count: int, seed: int, mix_status: b
     return selected[:count]
 
 
-def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count: int, tile: int) -> None:
+def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count: int, tile: int, *, clean_mask_only: bool = False) -> None:
     header_h = 34
     label_h = 34
     columns = groups * 3
@@ -94,7 +95,7 @@ def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count
         fluorescence = green_rgb(read_gray_float(Path(row["fluorescence_crop_path"])))
         positive = read_gray_float(Path(row["positive_mask_path"]))
         ignore = read_gray_float(Path(row["ignore_mask_path"]))
-        mask = mask_overlay(positive, ignore)
+        mask = gray_rgb(positive) if clean_mask_only else mask_overlay(positive, ignore)
         canvas.paste(resize(brightfield, tile), (x0, y0))
         canvas.paste(resize(fluorescence, tile), (x0 + tile, y0))
         canvas.paste(resize(mask, tile, mask=True), (x0 + tile * 2, y0))
@@ -117,7 +118,7 @@ def main() -> int:
         raise SystemExit(f"No rows available for split={args.split} in {args.manifest}")
     count = args.rows * args.groups
     selected = choose_rows(rows, count, args.seed, args.mix_status)
-    render_grid(selected, args.output, args.groups, args.rows, args.tile)
+    render_grid(selected, args.output, args.groups, args.rows, args.tile, clean_mask_only=args.clean_mask_only)
     sidecar = args.output.with_suffix(".txt")
     with sidecar.open("w", encoding="utf-8") as handle:
         handle.write(f"manifest={args.manifest}\n")
@@ -127,6 +128,7 @@ def main() -> int:
         handle.write(f"tile={args.tile}\n")
         handle.write(f"seed={args.seed}\n")
         handle.write(f"mix_status={args.mix_status}\n")
+        handle.write(f"clean_mask_only={args.clean_mask_only}\n")
         for index, row in enumerate(selected):
             handle.write(
                 f"{index}\t{row.get('split')}\t{row.get('target_status')}\t"
