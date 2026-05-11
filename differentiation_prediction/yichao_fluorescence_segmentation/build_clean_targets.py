@@ -35,18 +35,53 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build cleaned fluorescence-positive segmentation targets for Yichao B2F data.")
     parser.add_argument("--source-manifest", type=Path, default=DEFAULT_B2F_ROOT / "manifests" / "projected_instances_manifest.csv")
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--preset", choices=["default", "relaxed"], default="default")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--qc-count", type=int, default=80)
     parser.add_argument("--min-positive-fraction", type=float, default=0.0015)
     parser.add_argument("--min-positive-pixels", type=int, default=18)
+    parser.add_argument("--candidate-mode", choices=["strict", "relaxed"], default="strict")
     parser.add_argument("--bg-mad-k", type=float, default=5.0)
+    parser.add_argument("--bg-quantile", type=float, default=99.5)
+    parser.add_argument("--bg-quantile-mad-k", type=float, default=1.5)
+    parser.add_argument("--corrected-mad-k", type=float, default=None)
     parser.add_argument("--local-mad-k", type=float, default=2.0)
     parser.add_argument("--min-absolute", type=float, default=0.035)
     parser.add_argument("--min-local-contrast", type=float, default=0.012)
     parser.add_argument("--max-positive-fraction", type=float, default=0.42)
+    parser.add_argument("--min-object-pixels", type=int, default=6)
+    parser.add_argument("--min-object-area-fraction", type=float, default=0.00008)
+    parser.add_argument("--opening-radius", type=int, default=1)
+    parser.add_argument("--closing-radius", type=int, default=1)
+    parser.add_argument("--overexposure-refine-percentile", type=float, default=94.0)
+    parser.add_argument("--overexposure-strict-percentile", type=float, default=98.0)
     parser.add_argument("--seed", type=int, default=20260511)
     parser.add_argument("--self-test", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    apply_preset(args)
+    return args
+
+
+def apply_preset(args: argparse.Namespace) -> None:
+    if args.preset != "relaxed":
+        return
+    args.min_positive_fraction = 0.001
+    args.min_positive_pixels = 12
+    args.candidate_mode = "strict"
+    args.bg_mad_k = 4.0
+    args.bg_quantile = 99.3
+    args.bg_quantile_mad_k = 1.0
+    args.corrected_mad_k = 3.0
+    args.local_mad_k = 1.5
+    args.min_absolute = 0.025
+    args.min_local_contrast = 0.008
+    args.max_positive_fraction = 0.50
+    args.min_object_pixels = 4
+    args.min_object_area_fraction = 0.00004
+    args.opening_radius = 0
+    args.closing_radius = 1
+    args.overexposure_refine_percentile = 92.0
+    args.overexposure_strict_percentile = 98.0
 
 
 def robust_mad(values: np.ndarray) -> float:
@@ -83,18 +118,20 @@ def suppress_full_field_exposure(
     valid: np.ndarray,
     *,
     max_fraction: float,
+    refine_percentile: float,
+    strict_percentile: float,
 ) -> tuple[np.ndarray, bool]:
     fraction = float(candidate.sum() / max(valid.sum(), 1))
     if fraction <= max_fraction:
         return candidate, False
     inside_contrast = local_contrast[valid]
-    high_contrast_threshold = max(float(np.percentile(inside_contrast, 94)), 0.018)
+    high_contrast_threshold = max(float(np.percentile(inside_contrast, refine_percentile)), 0.018)
     refined = candidate & (local_contrast > high_contrast_threshold)
     refined_fraction = float(refined.sum() / max(valid.sum(), 1))
     if refined_fraction <= max_fraction:
         return refined, True
     # Uniform or overexposed fields should not become a dense positive label.
-    very_high = local_contrast > max(float(np.percentile(inside_contrast, 98)), 0.025)
+    very_high = local_contrast > max(float(np.percentile(inside_contrast, strict_percentile)), 0.025)
     return candidate & very_high, True
 
 
@@ -112,7 +149,7 @@ def build_target(
     bg = background_pixels(valid.astype(np.uint8), fluorescence)
     bg_median = float(np.median(bg))
     bg_mad = robust_mad(bg)
-    bg_q995 = float(np.percentile(bg, 99.5))
+    bg_q = float(np.percentile(bg, args.bg_quantile))
     corrected = fluorescence - bg_median
 
     sigma = max(2.0, min(fluorescence.shape) / 36.0)
@@ -122,27 +159,45 @@ def build_target(
 
     raw_threshold = max(
         bg_median + args.bg_mad_k * bg_mad,
-        bg_q995 + 1.5 * bg_mad,
+        bg_q + args.bg_quantile_mad_k * bg_mad,
         args.min_absolute,
     )
     contrast_threshold = max(args.local_mad_k * local_mad, args.min_local_contrast)
+    corrected_mad_k = args.bg_mad_k if args.corrected_mad_k is None else args.corrected_mad_k
 
     raw_candidate = (fluorescence > raw_threshold) & valid
     contrast_candidate = (local_contrast > contrast_threshold) & valid
-    corrected_candidate = (corrected > max(args.bg_mad_k * bg_mad, args.min_absolute)) & valid
-    candidate = raw_candidate & (contrast_candidate | corrected_candidate)
+    corrected_candidate = (corrected > max(corrected_mad_k * bg_mad, args.min_absolute)) & valid
+    high_raw_threshold = max(
+        bg_median + (args.bg_mad_k + 2.0) * bg_mad,
+        float(np.percentile(bg, min(99.9, max(args.bg_quantile, 99.0)))),
+        args.min_absolute * 1.5,
+    )
+    high_raw_candidate = (fluorescence > high_raw_threshold) & valid
+    if args.candidate_mode == "relaxed":
+        candidate = valid & (
+            (raw_candidate & (contrast_candidate | corrected_candidate))
+            | (corrected_candidate & contrast_candidate)
+            | high_raw_candidate
+        )
+    else:
+        candidate = raw_candidate & (contrast_candidate | corrected_candidate)
 
     candidate, overexposure_refined = suppress_full_field_exposure(
         candidate,
         local_contrast,
         valid,
         max_fraction=args.max_positive_fraction,
+        refine_percentile=args.overexposure_refine_percentile,
+        strict_percentile=args.overexposure_strict_percentile,
     )
 
-    min_area = max(6, int(0.00008 * valid.sum()))
+    min_area = max(args.min_object_pixels, int(args.min_object_area_fraction * valid.sum()))
     positive_bool = morphology.remove_small_objects(candidate.astype(bool), min_size=min_area)
-    positive_bool = morphology.binary_opening(positive_bool, morphology.disk(1))
-    positive_bool = morphology.binary_closing(positive_bool, morphology.disk(1))
+    if args.opening_radius > 0:
+        positive_bool = morphology.binary_opening(positive_bool, morphology.disk(args.opening_radius))
+    if args.closing_radius > 0:
+        positive_bool = morphology.binary_closing(positive_bool, morphology.disk(args.closing_radius))
 
     # Ambiguous pixels are raw-bright fluorescence that failed morphology/local-contrast checks.
     saturated = (fluorescence > 0.985) & valid
@@ -168,8 +223,9 @@ def build_target(
         "target_status": target_status,
         "bg_median": bg_median,
         "bg_mad": bg_mad,
-        "bg_q995": bg_q995,
+        "bg_quantile_value": bg_q,
         "raw_threshold": raw_threshold,
+        "high_raw_threshold": high_raw_threshold,
         "local_contrast_threshold": contrast_threshold,
         "local_mad": local_mad,
         "positive_pixels": int(positive.sum()),
@@ -294,12 +350,13 @@ def main() -> int:
             "target_bg_median": metrics["bg_median"],
             "target_bg_mad": metrics["bg_mad"],
             "target_raw_threshold": metrics["raw_threshold"],
+            "target_high_raw_threshold": metrics["high_raw_threshold"],
             "target_local_contrast_threshold": metrics["local_contrast_threshold"],
             "target_outside_high_fraction": metrics["outside_high_fraction"],
             "target_full_field_high_fraction": metrics["full_field_high_fraction"],
             "target_valid_raw_high_fraction": metrics["valid_raw_high_fraction"],
             "target_overexposure_refined": metrics["overexposure_refined"],
-            "target_generation_version": "v1_context_clean_threshold",
+            "target_generation_version": f"v1_context_clean_threshold_{args.preset}_{args.candidate_mode}",
         }
         out_rows.append(out)
         qc_rows.append(out)
