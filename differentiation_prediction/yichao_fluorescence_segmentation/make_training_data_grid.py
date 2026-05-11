@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
+from scipy import ndimage as ndi
 
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -37,6 +38,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-only", action="store_true", help="Render a pure grid of positive masks only, one mask tile per example.")
     parser.add_argument("--continuous-target", action="store_true", help="Render the third tile as mask times background-suppressed continuous fluorescence.")
     parser.add_argument("--continuous-scale", type=float, default=4.0, help="Display gain for background-suppressed continuous fluorescence.")
+    parser.add_argument(
+        "--continuous-mode",
+        choices=["hard-mask", "soft-mask", "bg-only"],
+        default="hard-mask",
+        help="Continuous target rendering mode. soft-mask dilates/blurs the mask; bg-only shows background-corrected fluorescence without mask multiplication.",
+    )
+    parser.add_argument("--soft-mask-dilate", type=int, default=5)
+    parser.add_argument("--soft-mask-sigma", type=float, default=2.0)
+    parser.add_argument("--soft-mask-floor", type=float, default=0.18)
     return parser.parse_args()
 
 
@@ -54,10 +64,43 @@ def mask_overlay(mask: np.ndarray, ignore: np.ndarray) -> Image.Image:
     return base
 
 
-def robust_bg_suppressed(fluorescence: np.ndarray, positive: np.ndarray, row: dict[str, str], scale: float) -> np.ndarray:
+def continuous_gate(
+    positive: np.ndarray,
+    *,
+    mode: str,
+    dilate: int,
+    sigma: float,
+    floor: float,
+) -> np.ndarray:
+    if mode == "bg-only":
+        return np.ones_like(positive, dtype=np.float32)
+    if mode == "hard-mask":
+        return (positive > 0.5).astype(np.float32)
+    mask = positive > 0.5
+    if dilate > 0:
+        mask = ndi.binary_dilation(mask, iterations=dilate)
+    soft = ndi.gaussian_filter(mask.astype(np.float32), sigma=max(sigma, 0.0))
+    max_value = float(soft.max())
+    if max_value > 0:
+        soft /= max_value
+    return np.clip(np.maximum(soft, float(floor) * (positive > 0.5)), 0.0, 1.0).astype(np.float32)
+
+
+def robust_bg_suppressed(
+    fluorescence: np.ndarray,
+    positive: np.ndarray,
+    row: dict[str, str],
+    scale: float,
+    *,
+    mode: str,
+    dilate: int,
+    sigma: float,
+    floor: float,
+) -> np.ndarray:
     bg = float(row.get("target_bg_median") or 0.0)
     corrected = np.maximum(fluorescence - bg, 0.0)
-    return np.clip(corrected * positive * scale, 0.0, 1.0)
+    gate = continuous_gate(positive, mode=mode, dilate=dilate, sigma=sigma, floor=floor)
+    return np.clip(corrected * gate * scale, 0.0, 1.0)
 
 
 def choose_rows(rows: list[dict[str, str]], count: int, seed: int, mix_status: bool) -> list[dict[str, str]]:
@@ -91,6 +134,10 @@ def render_grid(
     clean_mask_only: bool = False,
     continuous_target: bool = False,
     continuous_scale: float = 4.0,
+    continuous_mode: str = "hard-mask",
+    soft_mask_dilate: int = 5,
+    soft_mask_sigma: float = 2.0,
+    soft_mask_floor: float = 0.18,
 ) -> None:
     header_h = 34
     label_h = 34
@@ -117,7 +164,18 @@ def render_grid(
         positive = read_gray_float(Path(row["positive_mask_path"]))
         ignore = read_gray_float(Path(row["ignore_mask_path"]))
         if continuous_target:
-            mask = green_rgb(robust_bg_suppressed(fluorescence_arr, positive, row, continuous_scale))
+            mask = green_rgb(
+                robust_bg_suppressed(
+                    fluorescence_arr,
+                    positive,
+                    row,
+                    continuous_scale,
+                    mode=continuous_mode,
+                    dilate=soft_mask_dilate,
+                    sigma=soft_mask_sigma,
+                    floor=soft_mask_floor,
+                )
+            )
         else:
             mask = gray_rgb(positive) if clean_mask_only else mask_overlay(positive, ignore)
         canvas.paste(resize(brightfield, tile), (x0, y0))
@@ -175,6 +233,10 @@ def main() -> int:
             clean_mask_only=args.clean_mask_only,
             continuous_target=args.continuous_target,
             continuous_scale=args.continuous_scale,
+            continuous_mode=args.continuous_mode,
+            soft_mask_dilate=args.soft_mask_dilate,
+            soft_mask_sigma=args.soft_mask_sigma,
+            soft_mask_floor=args.soft_mask_floor,
         )
     sidecar = args.output.with_suffix(".txt")
     with sidecar.open("w", encoding="utf-8") as handle:
@@ -189,6 +251,10 @@ def main() -> int:
         handle.write(f"mask_only={args.mask_only}\n")
         handle.write(f"continuous_target={args.continuous_target}\n")
         handle.write(f"continuous_scale={args.continuous_scale}\n")
+        handle.write(f"continuous_mode={args.continuous_mode}\n")
+        handle.write(f"soft_mask_dilate={args.soft_mask_dilate}\n")
+        handle.write(f"soft_mask_sigma={args.soft_mask_sigma}\n")
+        handle.write(f"soft_mask_floor={args.soft_mask_floor}\n")
         for index, row in enumerate(selected):
             handle.write(
                 f"{index}\t{row.get('split')}\t{row.get('target_status')}\t"
