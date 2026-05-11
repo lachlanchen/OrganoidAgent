@@ -34,6 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", choices=["all", "train", "val", "test"], default="train")
     parser.add_argument("--mix-status", action="store_true", help="Sample positives, negatives, and overexposure-suppressed examples evenly when possible.")
     parser.add_argument("--clean-mask-only", action="store_true", help="Render the third tile as final positive mask only, without red ignore overlay.")
+    parser.add_argument("--mask-only", action="store_true", help="Render a pure grid of positive masks only, one mask tile per example.")
     return parser.parse_args()
 
 
@@ -109,6 +110,27 @@ def render_grid(rows: list[dict[str, str]], output: Path, groups: int, row_count
     canvas.save(output)
 
 
+def render_mask_only_grid(rows: list[dict[str, str]], output: Path, columns: int, row_count: int, tile: int) -> None:
+    label_h = 28
+    width = columns * tile
+    height = row_count * (tile + label_h)
+    canvas = Image.new("RGB", (width, height), (10, 12, 14))
+    draw = ImageDraw.Draw(canvas)
+    font = load_font(11)
+    for index, row in enumerate(rows[: row_count * columns]):
+        grid_row = index // columns
+        col = index % columns
+        x0 = col * tile
+        y0 = grid_row * (tile + label_h)
+        positive = read_gray_float(Path(row["positive_mask_path"]))
+        mask = gray_rgb(positive)
+        canvas.paste(resize(mask, tile, mask=True), (x0, y0))
+        label = f"{index:02d} {row.get('target_status')} {float(row.get('target_positive_fraction', 0)):.3f}"
+        draw.text((x0 + 4, y0 + tile + 5), label[:22], fill=(190, 198, 204), font=font)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output)
+
+
 def main() -> int:
     args = parse_args()
     rows = read_csv(args.manifest)
@@ -116,9 +138,12 @@ def main() -> int:
         rows = [row for row in rows if row.get("split") == args.split]
     if not rows:
         raise SystemExit(f"No rows available for split={args.split} in {args.manifest}")
-    count = args.rows * args.groups
+    count = args.rows * args.groups * 3 if args.mask_only else args.rows * args.groups
     selected = choose_rows(rows, count, args.seed, args.mix_status)
-    render_grid(selected, args.output, args.groups, args.rows, args.tile, clean_mask_only=args.clean_mask_only)
+    if args.mask_only:
+        render_mask_only_grid(selected, args.output, args.groups * 3, args.rows, args.tile)
+    else:
+        render_grid(selected, args.output, args.groups, args.rows, args.tile, clean_mask_only=args.clean_mask_only)
     sidecar = args.output.with_suffix(".txt")
     with sidecar.open("w", encoding="utf-8") as handle:
         handle.write(f"manifest={args.manifest}\n")
@@ -129,6 +154,7 @@ def main() -> int:
         handle.write(f"seed={args.seed}\n")
         handle.write(f"mix_status={args.mix_status}\n")
         handle.write(f"clean_mask_only={args.clean_mask_only}\n")
+        handle.write(f"mask_only={args.mask_only}\n")
         for index, row in enumerate(selected):
             handle.write(
                 f"{index}\t{row.get('split')}\t{row.get('target_status')}\t"
