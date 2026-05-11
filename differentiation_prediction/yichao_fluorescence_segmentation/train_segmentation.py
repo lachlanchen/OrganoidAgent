@@ -111,6 +111,15 @@ def set_lr(optimizer: torch.optim.Optimizer, lr: float) -> None:
         group["lr"] = lr
 
 
+def optimizer_trainable_parameters(optimizer: torch.optim.Optimizer) -> list[torch.nn.Parameter]:
+    return [
+        param
+        for group in optimizer.param_groups
+        for param in group.get("params", [])
+        if getattr(param, "requires_grad", False)
+    ]
+
+
 def score_from_metrics(metrics: dict[str, float]) -> float:
     # Precision-first segmentation selection. F0.5 directly penalizes over-painting.
     return float(metrics.get("best_f05", 0.0)) + 0.05 * float(metrics.get("global_auc", 0.0) if math.isfinite(metrics.get("global_auc", 0.0)) else 0.0)
@@ -328,6 +337,7 @@ def main() -> int:
     in_channels = 3 if args.include_distance else 2
     model = GlobalGatedSegUNet(in_channels=in_channels, base_channels=args.base_channels, dropout=args.dropout).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    grad_clip_params = optimizer_trainable_parameters(optimizer)
     metrics: list[dict[str, Any]] = []
     best_score = -1e18
     best_epoch = 0
@@ -387,7 +397,7 @@ def main() -> int:
             loss, components = segmentation_loss_from_args(outputs, batch, args)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(grad_clip_params, 3.0, foreach=False)
             optimizer.step()
             batch_size = image.shape[0]
             loss_sum += float(loss.detach().cpu()) * batch_size
