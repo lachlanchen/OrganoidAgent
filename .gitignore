@@ -30,11 +30,12 @@ Yichao-data-1/
 .venv_lif/
 # Local experiment/data artifacts
 ._.DS_Store
-Data-Yichao-1/
-Data-Yichao-2/
-Data-Yichao-3/
-Data-Yichao-4/
+# Local raw/extracted microscopy data. Keep durable summaries under references/
+# and curated preview figures under visualizations/ instead of tracking data.
+Data-Yichao-*/
 Data-Zhengyu/
+Yichao-example/
+datasets-online/
 analysis-outputs/
 outputs/
 .auto-readme-work/
