@@ -9,6 +9,8 @@ RETRY_SLEEP_SECONDS="${YICHAO_PROJECTED_RETRY_SLEEP_SECONDS:-3}"
 ORGANOID_PYTHON="/home/lachlan/miniconda3/envs/organoid/bin/python"
 DATASETS=()
 TIME_AWARE_ONLY=0
+BRIGHTFIELD_PROJECTION="${YICHAO_PROJECTED_BRIGHTFIELD_PROJECTION:-min}"
+FLUORESCENCE_PROJECTION="${YICHAO_PROJECTED_FLUORESCENCE_PROJECTION:-max}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,8 +29,16 @@ while [[ $# -gt 0 ]]; do
       TIME_AWARE_ONLY=1
       shift
       ;;
+    --brightfield-projection)
+      BRIGHTFIELD_PROJECTION="$2"
+      shift 2
+      ;;
+    --fluorescence-projection)
+      FLUORESCENCE_PROJECTION="$2"
+      shift 2
+      ;;
     --help|-h)
-      echo "Usage: $0 [--output-root PATH] [--datasets Data-Yichao-3 ...] [--time-aware-only]"
+      echo "Usage: $0 [--output-root PATH] [--datasets Data-Yichao-3 ...] [--time-aware-only] [--brightfield-projection min|max|mean|median] [--fluorescence-projection min|max|mean|median]"
       exit 0
       ;;
     *)
@@ -136,7 +146,7 @@ tmp.replace(path)
 PY
 }
 
-log "projected pipeline start output_root=$OUTPUT_ROOT datasets=$dataset_filter target_projected_images=$target_images chunk_new_images=$CHUNK_NEW_IMAGES time_aware_only=$TIME_AWARE_ONLY"
+log "projected pipeline start output_root=$OUTPUT_ROOT datasets=$dataset_filter target_projected_images=$target_images chunk_new_images=$CHUNK_NEW_IMAGES time_aware_only=$TIME_AWARE_ONLY brightfield_projection=$BRIGHTFIELD_PROJECTION fluorescence_projection=$FLUORESCENCE_PROJECTION"
 
 initial_completed="$(count_completed_images)"
 initial_failures="$(count_failure_records)"
@@ -161,6 +171,8 @@ while true; do
     --gpu true
     --output-root "$OUTPUT_ROOT"
     --max-new-images "$CHUNK_NEW_IMAGES"
+    --brightfield-projection "$BRIGHTFIELD_PROJECTION"
+    --fluorescence-projection "$FLUORESCENCE_PROJECTION"
   )
   if [[ ${#DATASETS[@]} -gt 0 ]]; then
     cmd+=(--datasets "${DATASETS[@]}")
