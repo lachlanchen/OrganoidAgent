@@ -38,6 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preset", choices=["default", "relaxed"], default="default")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--qc-count", type=int, default=80)
+    parser.add_argument("--max-overexposure-qc", type=int, default=-1, help="Maximum extra overexposure QC strips beyond qc-count; negative keeps old unlimited behavior.")
     parser.add_argument("--min-positive-fraction", type=float, default=0.0015)
     parser.add_argument("--min-positive-pixels", type=int, default=18)
     parser.add_argument("--candidate-mode", choices=["strict", "relaxed"], default="strict")
@@ -323,6 +324,7 @@ def main() -> int:
     out_rows: list[dict[str, Any]] = []
     qc_paths: list[Path] = []
     qc_rows: list[dict[str, Any]] = []
+    overexposure_qc_count = 0
     for index, row in enumerate(rows):
         brightfield = read_gray_float(Path(row["brightfield_crop_path"]))
         fluorescence = read_gray_float(Path(row["fluorescence_crop_path"]))
@@ -333,10 +335,15 @@ def main() -> int:
         pos_path, ignore_path, qc_path = target_paths(args.output_root, row)
         save_gray_uint8(pos_path, positive)
         save_gray_uint8(ignore_path, ignore)
-        if len(qc_paths) < args.qc_count or metrics["target_status"] == "overexposure_suppressed":
+        is_overexposure = metrics["target_status"] == "overexposure_suppressed"
+        allow_extra_overexposure = args.max_overexposure_qc < 0 or overexposure_qc_count < args.max_overexposure_qc
+        should_write_qc = len(qc_paths) < args.qc_count or (is_overexposure and allow_extra_overexposure)
+        if should_write_qc:
             label = f"{index:05d} {row['instance_id'][:120]} | {metrics['target_status']}"
             make_qc_image(qc_path, brightfield, fluorescence, mask, positive, ignore, metrics, label)
             qc_paths.append(qc_path)
+            if is_overexposure and len(qc_paths) >= args.qc_count:
+                overexposure_qc_count += 1
         out = {
             **row,
             "positive_mask_path": str(pos_path),

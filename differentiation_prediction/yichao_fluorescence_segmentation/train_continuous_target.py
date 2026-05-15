@@ -15,7 +15,7 @@ matplotlib.use("Agg", force=True)
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, RandomSampler, Sampler, WeightedRandomSampler
 
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -76,6 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--metric-thresholds", type=str, default="0.02,0.04,0.06,0.08,0.10,0.15,0.20,0.30,0.40,0.50")
     parser.add_argument("--balanced-sampler", action="store_true")
     parser.add_argument("--positive-sample-weight", type=float, default=0.0)
+    parser.add_argument("--samples-per-epoch", type=int, default=None, help="Optional sampled training examples per epoch for very large manifests.")
     parser.add_argument("--eval-every", type=int, default=2)
     parser.add_argument("--panel-every", type=int, default=10)
     parser.add_argument("--save-every", type=int, default=10)
@@ -92,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def make_loader(dataset: ContinuousFluorescenceTargetDataset, args: argparse.Namespace, shuffle: bool, sampler: WeightedRandomSampler | None = None) -> DataLoader:
+def make_loader(dataset: ContinuousFluorescenceTargetDataset, args: argparse.Namespace, shuffle: bool, sampler: Sampler | None = None) -> DataLoader:
     kwargs: dict[str, Any] = {
         "batch_size": args.batch_size,
         "shuffle": bool(shuffle and sampler is None),
@@ -503,7 +504,10 @@ def main() -> int:
     sampler = None
     if args.balanced_sampler:
         weights = make_balanced_weights(train_rows, args.positive_sample_weight)
-        sampler = WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+        num_samples = len(weights) if args.samples_per_epoch is None else max(1, int(args.samples_per_epoch))
+        sampler = WeightedRandomSampler(weights, num_samples=num_samples, replacement=True)
+    elif args.samples_per_epoch is not None:
+        sampler = RandomSampler(train_ds, replacement=True, num_samples=max(1, int(args.samples_per_epoch)))
     train_loader = make_loader(train_ds, args, shuffle=True, sampler=sampler)
     val_loader = make_loader(val_ds, args, shuffle=False)
     test_loader = make_loader(test_ds, args, shuffle=False)
