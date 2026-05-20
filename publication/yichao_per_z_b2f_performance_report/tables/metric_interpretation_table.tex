@@ -1,0 +1,12 @@
+\begin{tabular}{@{}lll@{}}
+\toprule
+Metric & What it measures & Practical interpretation \\
+\midrule
+F1 best & Best fluorescent-support F1 over thresholds & Main intuitive region-detection accuracy \\
+F1 at 0.2 & F1 at the fixed support threshold used in reports & Practical operating-point accuracy \\
+Total ratio & Sum of predicted fluorescence divided by true sum & Values near 1 mean calibrated total expression \\
+Log-total r & Correlation of log total fluorescence per instance & Whether bright/dim organoids are ranked correctly \\
+Pearson & Pixel-level continuous correlation & Fine spatial intensity agreement \\
+Positive Pearson & Correlation only inside true positive fluorescence pixels & Quality of intensity prediction inside signal regions \\
+\bottomrule
+\end{tabular}

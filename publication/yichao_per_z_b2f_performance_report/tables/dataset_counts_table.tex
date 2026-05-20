@@ -1,0 +1,17 @@
+\begin{tabular}{@{}llr@{}}
+\toprule
+Dataset stage & Definition & Count \\
+\midrule
+Per-z source images & Brightfield/fluorescence image records, Data 1--11 database & 79,405 \\
+Per-z instance records & Segmented organoid instance records, Data 1--11 database & 354,797 \\
+Per-z edge-padded instances & Instances touching crop/image boundary & 132,997 \\
+Per-z usable targets & Filtered Data 1--10 rows used for target construction & 214,311 \\
+Training rows & Data 1--10 train split & 139,935 \\
+Validation rows & Data 1--10 validation split & 62,814 \\
+Internal test rows & Data 1--10 internal test split & 11,562 \\
+External rows & Data-Yichao-11 only, never used in training & 7,489 \\
+\midrule
+Max-projection usable targets & Data 1--10 projected rows & 9,775 \\
+Max-projection external rows & Data-Yichao-11 projected rows & 420 \\
+\bottomrule
+\end{tabular}
