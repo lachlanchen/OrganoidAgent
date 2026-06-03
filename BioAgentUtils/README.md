@@ -39,8 +39,8 @@ Example:
 
 ```bash
 python BioAgentUtils/organize_lif_jpegs.py \
-  "Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all" \
-  --output-dir "Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"
+  "Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all" \
+  --output-dir "Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"
 ```
 
 By default it uses hardlinks (`--mode link`) to avoid duplicating large files.
@@ -51,8 +51,8 @@ Use `--mode copy` or `--mode move` if needed.
 `train_pix2pix_yichao.py` trains a brightfield-to-fluorescence pix2pix model.
 
 Defaults:
-- Train set: `Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
-- Verification set: `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object` (split into val/test)
+- Train set: `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
+- Verification set: `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object` (split into val/test)
 - Output root: `results/`
 
 Run full training (GPU-only):

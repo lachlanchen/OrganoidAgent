@@ -2,7 +2,7 @@
 
 ## Data
 - Source LIF: `/home/lachlan/Downloads/PDO28 and Jurkat.lif`
-- Repo copy: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-9/PDO28 and Jurkat.lif`
+- Repo copy: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-9/PDO28 and Jurkat.lif`
 - Dataset name: `Data-Yichao-9`
 - Biological task: PDO28 organoid and S100A4 CAR-Jurkat live imaging.
 
@@ -51,12 +51,12 @@ Run:
 ```bash
 bash analysis-tools/yichao_instance_pairs/run_yichao_dataset_incremental_pipeline.sh \
   --dataset-name Data-Yichao-9 \
-  --lif-path "/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-9/PDO28 and Jurkat.lif"
+  --lif-path "/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-9/PDO28 and Jurkat.lif"
 ```
 
 Expected source folders after extraction:
-- Flat JPEG export: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-9/PDO28 and Jurkat_jpeg_all`
-- Grouped live/position folders: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-9/PDO28 and Jurkat_jpeg_all_by_position`
+- Flat JPEG export: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-9/PDO28 and Jurkat_jpeg_all`
+- Grouped live/position folders: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-9/PDO28 and Jurkat_jpeg_all_by_position`
 
 Expected analysis outputs:
 - Instance-pair root: `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_instance_pairs`

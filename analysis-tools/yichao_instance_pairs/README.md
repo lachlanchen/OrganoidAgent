@@ -93,7 +93,7 @@ Process one new Yichao LIF end to end and append it into the combined Yichao out
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
 bash analysis-tools/yichao_instance_pairs/run_yichao_dataset_incremental_pipeline.sh \
   --dataset-name Data-Yichao-5 \
-  --lif-path /home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-5/N39_TriRep_DF_3.lif
+  --lif-path /home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-5/N39_TriRep_DF_3.lif
 ```
 
 Run that incremental append flow in `tmux`:
@@ -102,7 +102,7 @@ Run that incremental append flow in `tmux`:
 cd /home/lachlan/ProjectsLFS/OrganoidAgent
 bash analysis-tools/yichao_instance_pairs/resume_yichao_dataset_incremental_pipeline_tmux.sh \
   --dataset-name Data-Yichao-5 \
-  --lif-path /home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-5/N39_TriRep_DF_3.lif
+  --lif-path /home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-5/N39_TriRep_DF_3.lif
 ```
 
 Resume behavior:

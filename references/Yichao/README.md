@@ -9,10 +9,12 @@ Related future-prediction strategy:
 
 This note documents the current Yichao dataset layout in:
 
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-2`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-3`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-4`
+- v1 root: `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-1`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-2`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-3`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-4`
+- v2 root: `/home/lachlan/ProjectsLFS/OrganoidAgent/DATA-Yichao-v2`
 
 The supervised mapping used in this repo is:
 
@@ -36,12 +38,12 @@ Current meaning of the folders:
 
 Current on-disk state:
 
-- `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 Important:
 
@@ -55,7 +57,7 @@ Important:
 For pix2pix, the usable supervised unit is:
 
 - one paired 2D image plane at fixed `series/position`, `z`, and `t`
-- brightfield `c0` paired with fluorescence `c1`
+- brightfield `c1` paired with fluorescence `c0`
 
 For one LIF series:
 
@@ -67,11 +69,11 @@ because each `(t, z)` plane is exported for both channels.
 
 ## Important Overlap Warning
 
-`Data-Yichao-1/P11N&N39_Rep_DF.lif` is not an independent evaluation-only dataset.
+`Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF.lif` is not an independent evaluation-only dataset.
 
 Its 5 static MUC2 samples are byte-identical to the first 5 static samples inside:
 
-- `Data-Yichao-2/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF.lif`
 
 So:
 
@@ -85,7 +87,7 @@ So:
 
 LIF file:
 
-- `Data-Yichao-1/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF.lif`
 
 Contents:
 
@@ -120,7 +122,7 @@ Interpretation:
 
 LIF file:
 
-- `Data-Yichao-2/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF.lif`
 
 Contents:
 
@@ -168,9 +170,9 @@ Current role:
 
 Current files:
 
-- `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 
 Current extracted totals:
 
@@ -228,9 +230,9 @@ Current role:
 
 Current files:
 
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 Current extracted totals:
 
@@ -303,7 +305,7 @@ Here, “object” is better read as:
 So one folder under `*_by_position` corresponds to one monitored position.
 
 
-### `Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
+### `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
 
 This folder mixes two different data types:
 
@@ -313,7 +315,7 @@ This folder mixes two different data types:
 So not every folder there is a time-lapse sequence.
 
 
-### `Data-Yichao-1/P11N&N39_Rep_DF_jpeg`
+### `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg`
 
 This is a legacy export for the 5 static MUC2 samples.
 
@@ -325,7 +327,7 @@ It predates the fuller `t000_z000` naming style and is effectively:
 
 The cleaner equivalent export is:
 
-- `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
 
 
 ## Unique Usable Data Across the Underlying Source Files
@@ -334,8 +336,8 @@ If duplicated content is removed:
 
 - `Data-Yichao-1`: `5` paired samples, but all duplicated in `Data-Yichao-2`
 - `Data-Yichao-2`: `960` unique dynamic paired samples
-- `Data-Yichao-3/N39_TriRep_DF.lif`: `10019` unique dynamic paired samples
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`: `7940` dynamic paired samples
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`: `10019` unique dynamic paired samples
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`: `7940` dynamic paired samples
 
 Total unique paired planes across the current non-empty usable source LIF files:
 

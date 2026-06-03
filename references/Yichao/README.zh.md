@@ -6,15 +6,17 @@
 
 本文档整理以下目录中的当前 Yichao 数据布局：
 
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-2`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-3`
-- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-4`
+- v1 根目录：`/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-1`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-2`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-3`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-4`
+- v2 根目录：`/home/lachlan/ProjectsLFS/OrganoidAgent/DATA-Yichao-v2`
 
 本仓库当前采用的监督映射是：
 
-- 输入：`c0` 明场
-- 目标：`c1` 荧光
+- 输入：`c1` 明场
+- 目标：`c0` 荧光
 
 这个假设已经被以下脚本使用：
 
@@ -33,12 +35,12 @@
 
 当前磁盘状态：
 
-- `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 重要说明：
 
@@ -52,7 +54,7 @@
 对于 pix2pix，最合适的监督样本定义是：
 
 - 在固定 `series/position`、`z`、`t` 下的一对 2D 图像
-- 即明场 `c0` 与荧光 `c1` 的同位配对
+- 即明场 `c1` 与荧光 `c0` 的同位配对
 
 对一个 LIF series 而言：
 
@@ -64,11 +66,11 @@
 
 ## 重要的重叠警告
 
-`Data-Yichao-1/P11N&N39_Rep_DF.lif` 不能被视为独立评估集。
+`Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF.lif` 不能被视为独立评估集。
 
 其中 5 个静态 MUC2 样本，与下面文件中的前 5 个静态样本是字节级完全一致的：
 
-- `Data-Yichao-2/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF.lif`
 
 因此：
 
@@ -82,7 +84,7 @@
 
 LIF 文件：
 
-- `Data-Yichao-1/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF.lif`
 
 内容：
 
@@ -117,7 +119,7 @@ LIF 文件：
 
 LIF 文件：
 
-- `Data-Yichao-2/P11N&N39_Rep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF.lif`
 
 内容：
 
@@ -165,9 +167,9 @@ series 结构如下：
 
 当前文件：
 
-- `Data-Yichao-3/N39_TriRep_DF.lif`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all`
-- `Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all_by_position`
 
 当前导出总量：
 
@@ -225,9 +227,9 @@ series 明细：
 
 当前文件：
 
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
-- `Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all_by_position`
 
 当前导出总量：
 
@@ -299,7 +301,7 @@ series 明细：
 也就是说，`*_by_position` 下的一个子目录就是一个被持续监测的 position。
 
 
-### `Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
+### `Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object`
 
 这个目录里混有两种不同类型的数据：
 
@@ -309,7 +311,7 @@ series 明细：
 所以其中并不是每个子目录都是 time-lapse 序列。
 
 
-### `Data-Yichao-1/P11N&N39_Rep_DF_jpeg`
+### `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg`
 
 这是较早期的旧版导出目录。
 
@@ -320,7 +322,7 @@ series 明细：
 
 更规范、信息更完整的等价导出目录是：
 
-- `Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
+- `Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all`
 
 
 ## 基于底层原始文件的唯一可用数据
@@ -329,8 +331,8 @@ series 明细：
 
 - `Data-Yichao-1`：`5` 个配对样本，但全部在 `Data-Yichao-2` 中重复
 - `Data-Yichao-2`：`960` 个唯一动态配对样本
-- `Data-Yichao-3/N39_TriRep_DF.lif`：`10019` 个唯一动态配对样本
-- `Data-Yichao-4/N39_TriRep_DF_2.lif`：`7940` 个动态配对样本
+- `Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF.lif`：`10019` 个唯一动态配对样本
+- `Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2.lif`：`7940` 个动态配对样本
 
 因此，当前非空且可用的原始 LIF 来源中的唯一配对平面总数为：
 

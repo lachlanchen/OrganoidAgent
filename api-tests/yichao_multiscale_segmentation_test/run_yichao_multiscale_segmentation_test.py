@@ -30,28 +30,28 @@ class DatasetSpec:
 DATASET_SPECS = (
     DatasetSpec(
         name="Data-Yichao-1",
-        image_glob="Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all/*_c1.jpg",
+        image_glob="Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all/*_c1.jpg",
         selection_mode="single",
         stage="differentiated_irregular",
         diameters=(140, 240, 380),
     ),
     DatasetSpec(
         name="Data-Yichao-2",
-        image_glob="Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object/N39_TriRep_DF_D2_Position001/*_t000_z*_c1.jpg",
+        image_glob="Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object/N39_TriRep_DF_D2_Position001/*_t000_z*_c1.jpg",
         selection_mode="best_focus",
         stage="cystic_early",
         diameters=(110, 220, 360),
     ),
     DatasetSpec(
         name="Data-Yichao-3",
-        image_glob="Data-Yichao-3/N39_TriRep_DF_jpeg_all/00_Experiment_1_Day_2_Position001_t000_z*_c1.jpg",
+        image_glob="Data-Yichao-v1/Data-Yichao-3/N39_TriRep_DF_jpeg_all/00_Experiment_1_Day_2_Position001_t000_z*_c1.jpg",
         selection_mode="best_focus",
         stage="fused_large",
         diameters=(70, 130, 220),
     ),
     DatasetSpec(
         name="Data-Yichao-4",
-        image_glob="Data-Yichao-4/N39_TriRep_DF_2_jpeg_all/00_Experiment_1_Day_2_Position001_t000_z*_c1.jpg",
+        image_glob="Data-Yichao-v1/Data-Yichao-4/N39_TriRep_DF_2_jpeg_all/00_Experiment_1_Day_2_Position001_t000_z*_c1.jpg",
         selection_mode="best_focus",
         stage="fused_large",
         diameters=(70, 130, 220),

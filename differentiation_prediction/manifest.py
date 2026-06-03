@@ -73,8 +73,8 @@ def default_dataset_specs(repo_root: Path | None = None) -> List[DatasetSpec]:
     return [
         DatasetSpec(
             dataset_id="Y1",
-            grouped_root=base / "Data-Yichao-1" / "P11N&N39_Rep_DF_jpeg_all_by_object",
-            source_lif=base / "Data-Yichao-1" / "P11N&N39_Rep_DF.lif",
+            grouped_root=base / "Data-Yichao-v1" / "Data-Yichao-1" / "P11N&N39_Rep_DF_jpeg_all_by_object",
+            source_lif=base / "Data-Yichao-v1" / "Data-Yichao-1" / "P11N&N39_Rep_DF.lif",
             width_px=1024,
             height_px=1024,
             pixel_size_um=0.303,
@@ -82,8 +82,8 @@ def default_dataset_specs(repo_root: Path | None = None) -> List[DatasetSpec]:
         ),
         DatasetSpec(
             dataset_id="Y2",
-            grouped_root=base / "Data-Yichao-2" / "P11N&N39_Rep_DF_jpeg_all_by_object",
-            source_lif=base / "Data-Yichao-2" / "P11N&N39_Rep_DF.lif",
+            grouped_root=base / "Data-Yichao-v1" / "Data-Yichao-2" / "P11N&N39_Rep_DF_jpeg_all_by_object",
+            source_lif=base / "Data-Yichao-v1" / "Data-Yichao-2" / "P11N&N39_Rep_DF.lif",
             width_px=1024,
             height_px=1024,
             pixel_size_um=0.568,
@@ -91,8 +91,8 @@ def default_dataset_specs(repo_root: Path | None = None) -> List[DatasetSpec]:
         ),
         DatasetSpec(
             dataset_id="Y3",
-            grouped_root=base / "Data-Yichao-3" / "N39_TriRep_DF_jpeg_all_by_position",
-            source_lif=base / "Data-Yichao-3" / "N39_TriRep_DF.lif",
+            grouped_root=base / "Data-Yichao-v1" / "Data-Yichao-3" / "N39_TriRep_DF_jpeg_all_by_position",
+            source_lif=base / "Data-Yichao-v1" / "Data-Yichao-3" / "N39_TriRep_DF.lif",
             width_px=512,
             height_px=512,
             pixel_size_um=1.137,
@@ -100,8 +100,8 @@ def default_dataset_specs(repo_root: Path | None = None) -> List[DatasetSpec]:
         ),
         DatasetSpec(
             dataset_id="Y4",
-            grouped_root=base / "Data-Yichao-4" / "N39_TriRep_DF_2_jpeg_all_by_position",
-            source_lif=base / "Data-Yichao-4" / "N39_TriRep_DF_2.lif",
+            grouped_root=base / "Data-Yichao-v1" / "Data-Yichao-4" / "N39_TriRep_DF_2_jpeg_all_by_position",
+            source_lif=base / "Data-Yichao-v1" / "Data-Yichao-4" / "N39_TriRep_DF_2.lif",
             width_px=512,
             height_px=512,
             pixel_size_um=None,

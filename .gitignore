@@ -33,6 +33,7 @@ Yichao-data-1/
 # Local raw/extracted microscopy data. Keep durable summaries under references/
 # and curated preview figures under visualizations/ instead of tracking data.
 Data-Yichao-*/
+Data-Yichao-v1/
 DATA-Yichao-v2/
 Data-Zhengyu/
 Yichao-example/

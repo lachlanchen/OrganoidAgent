@@ -181,12 +181,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--train-root",
         type=Path,
-        default=Path("/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"),
+        default=Path("/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-2/P11N&N39_Rep_DF_jpeg_all_by_object"),
     )
     parser.add_argument(
         "--test-root",
         type=Path,
-        default=Path("/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object"),
+        default=Path("/home/lachlan/ProjectsLFS/OrganoidAgent/Data-Yichao-v1/Data-Yichao-1/P11N&N39_Rep_DF_jpeg_all_by_object"),
     )
     parser.add_argument(
         "--output-dir",
