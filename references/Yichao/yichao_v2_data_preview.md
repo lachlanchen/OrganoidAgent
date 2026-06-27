@@ -1,10 +1,14 @@
-# Yichao v2 Data Preview: N39Rep Goblet DF D3/D4
+# Yichao v2 Data Preview: N39Rep Goblet/Globet DF
 
 Date prepared: 2026-06-03
+Updated: 2026-06-27
 
 ## Source Files
 
+- D2 source: `/home/lachlan/Downloads/N39Rep_Globet DF_D2.lif`
 - D3 source: `/home/lachlan/Downloads/N39Rep_Globet_DF_D3.lif`
+- D3_1 source: `/home/lachlan/Downloads/N39Rep_Globet DF_D3_1.lif`
+- D3_2 source: `/home/lachlan/Downloads/N39Rep_Globet DF_D3_2.lif`
 - D4 source: `/home/lachlan/Downloads/N39Rep_Globet DF_D4.lif`
 
 User note for D3:
@@ -34,11 +38,20 @@ The raw/extracted data are local and git-ignored:
     N39Rep_Globet_DF_D4.lif
     N39Rep_Globet_DF_D4_jpeg_all/
     N39Rep_Globet_DF_D4_jpeg_all_by_position/
+  3_N39Rep_Globet_DF_D2/
+    N39Rep_Globet_DF_D2.lif
+  4_N39Rep_Globet_DF_D3_1/
+    N39Rep_Globet_DF_D3_1.lif
+  5_N39Rep_Globet_DF_D3_2/
+    N39Rep_Globet_DF_D3_2.lif
 ```
 
 The D4 filename was copied with a sanitized space-free name inside the repo:
 
 ```text
+N39Rep_Globet DF_D2.lif -> N39Rep_Globet_DF_D2.lif
+N39Rep_Globet DF_D3_1.lif -> N39Rep_Globet_DF_D3_1.lif
+N39Rep_Globet DF_D3_2.lif -> N39Rep_Globet_DF_D3_2.lif
 N39Rep_Globet DF_D4.lif -> N39Rep_Globet_DF_D4.lif
 ```
 
@@ -57,6 +70,21 @@ Results:
 |---|---:|---:|---:|---:|---:|
 | D3 | 40 | 40 | 2760 | 1 | 2 |
 | D4 | 24 | 24 | 952 | 1 | 2 |
+
+The 2026-06-27 copied D2/D3_1/D3_2 files have not yet been extracted or segmented in this pass. Metadata inspection only:
+
+| Dataset folder | Day hint | LIF image series | Field/series count | Timepoints | Z range | Internal channels per series |
+|---|---|---:|---:|---:|---|---:|
+| `3_N39Rep_Globet_DF_D2` | D2 | 15 | 15 generic `Series###` | 1 | 1 | 7 |
+| `4_N39Rep_Globet_DF_D3_1` | D3 | 10 | 10 generic `Series###` | 1 | 4-13 | 8 |
+| `5_N39Rep_Globet_DF_D3_2` | D3 | 12 | 12 generic `Series###` | 1 | 12-31 | 8 |
+
+Metadata outputs:
+
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_v2_metadata/yichao_v2_lif_metadata_summary.json`
+- `/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-outputs/yichao_v2_metadata/yichao_v2_lif_series_metadata.csv`
+
+Important: D2/D3_1/D3_2 use generic series names and 7/8 internal channels, unlike the already-previewed D3/D4 files. They require a channel-mapping preview before they are added to segmentation/training.
 
 ## Experiment Structure
 
@@ -126,6 +154,13 @@ Preview script:
 
 ```text
 /home/lachlan/ProjectsLFS/OrganoidAgent/analysis-tools/yichao_v2/preview_extracted_channels.py
+```
+
+Preparation scripts:
+
+```text
+/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-tools/yichao_v2/inspect_v2_lif_metadata.py
+/home/lachlan/ProjectsLFS/OrganoidAgent/analysis-tools/yichao_v2/run_yichao_v2_lif_prepare.sh
 ```
 
 ## Provisional Channel Use For Later Modeling
