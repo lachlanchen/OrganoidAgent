@@ -2,6 +2,9 @@
 
 Related future-prediction strategy:
 
+- `references/Yichao/yichao_wechat_virtual_staining_strategy.md`
+- `references/Yichao/yichao_virtual_staining_strategy_tex/main.tex`
+- `references/Yichao/yichao_virtual_staining_strategy_tex/main.pdf`
 - `references/Yichao/future_fluorescence_forecasting_strategy.md`
 - `references/Yichao/future_fluorescence_forecasting_tex/main.tex`
 - `references/Yichao/future_differentiation_path_research_plan.md`
