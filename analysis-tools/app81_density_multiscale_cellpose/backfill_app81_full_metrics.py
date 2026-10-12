@@ -19,6 +19,7 @@ MONTH_MAP = {
     '十一月': 11,
 }
 DATE_RE = re.compile(r'^(\d{2})-(十月|十一月)-(\d{4})$')
+ISO_DATE_RE = re.compile(r'^(\d{4})-(\d{2})-(\d{2})$')
 MAG_RE = re.compile(r'(10x|10X|4x|4X)(\d+)?', re.I)
 VERY_DARK_THRESHOLD = 0.35
 EPS = 1e-9
@@ -33,12 +34,17 @@ def parse_args() -> argparse.Namespace:
 def parse_date_dir(name: str) -> tuple[str, date]:
     m = DATE_RE.match(name)
     if not m:
-        raise RuntimeError(f'Cannot parse date dir: {name}')
-    day = int(m.group(1))
-    month = MONTH_MAP[m.group(2)]
-    year = int(m.group(3))
+        iso_match = ISO_DATE_RE.match(name)
+        if not iso_match:
+            raise RuntimeError(f'Cannot parse date dir: {name}')
+        year, month, day = (int(part) for part in iso_match.groups())
+    else:
+        day = int(m.group(1))
+        month = MONTH_MAP[m.group(2)]
+        year = int(m.group(3))
     dt = date(year, month, day)
-    date_label = f"{day:02d}-{'Oct' if month == 10 else 'Nov'}"
+    month_label = {10: 'Oct', 11: 'Nov'}.get(month, f'{month:02d}')
+    date_label = f"{day:02d}-{month_label}"
     return date_label, dt
 
 

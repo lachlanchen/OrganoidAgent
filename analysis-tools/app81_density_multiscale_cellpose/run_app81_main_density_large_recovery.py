@@ -26,6 +26,7 @@ MONTH_MAP = {
     '十一月': 11,
 }
 DATE_RE = re.compile(r'^(\d{2})-(十月|十一月)-(\d{4})$')
+ISO_DATE_RE = re.compile(r'^(\d{4})-(\d{2})-(\d{2})$')
 MAG_RE = re.compile(r'(10x|10X|4x|4X)(\d+)?', re.I)
 
 
@@ -34,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--src-root', required=True)
     p.add_argument('--out-dir', required=True)
     p.add_argument('--conditions', default=','.join(CONDITION_ORDER))
+    p.add_argument('--day-zero', help='Optional experiment day-zero date in YYYY-MM-DD format')
     p.add_argument('--overwrite', action='store_true')
     return p.parse_args()
 
@@ -47,13 +49,18 @@ def normalize_condition(raw: str) -> str:
 
 def parse_date_dir(name: str) -> tuple[str, date]:
     m = DATE_RE.match(name)
-    if not m:
-        raise RuntimeError(f'Cannot parse date dir: {name}')
-    day = int(m.group(1))
-    month = MONTH_MAP[m.group(2)]
-    year = int(m.group(3))
+    if m:
+        day = int(m.group(1))
+        month = MONTH_MAP[m.group(2)]
+        year = int(m.group(3))
+    else:
+        iso_match = ISO_DATE_RE.match(name)
+        if not iso_match:
+            raise RuntimeError(f'Cannot parse date dir: {name}')
+        year, month, day = (int(part) for part in iso_match.groups())
     dt = date(year, month, day)
-    date_label = f"{day:02d}-{'Oct' if month == 10 else 'Nov'}"
+    month_label = {10: 'Oct', 11: 'Nov'}.get(month, f'{month:02d}')
+    date_label = f"{day:02d}-{month_label}"
     return date_label, dt
 
 
@@ -269,10 +276,16 @@ def process_one(model, tif: Path, out_dir: Path, relative_day: int, condition: s
     label_mask, color_mask = seg.build_outputs(rgb, kept)
     overlay = base.render_overlay(rgb, label_mask, color_mask)
 
-    cv2.imwrite(str(mask_path), label_mask)
-    cv2.imwrite(str(rgb_path), cv2.cvtColor(color_mask, cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(overlay_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(signal_path), signal)
+    def write_png(path: Path, image: np.ndarray) -> None:
+        ok, encoded = cv2.imencode(".png", image)
+        if not ok:
+            raise OSError(f"OpenCV failed to encode PNG: {path}")
+        path.write_bytes(encoded.tobytes())
+
+    write_png(mask_path, label_mask)
+    write_png(rgb_path, cv2.cvtColor(color_mask, cv2.COLOR_RGB2BGR))
+    write_png(overlay_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+    write_png(signal_path, signal)
 
     shape_metrics = aggregate_segmentation_metrics(label_mask, signal)
 
@@ -391,7 +404,10 @@ def main() -> int:
     if not images:
         raise SystemExit(f'No main-phase labeled 10x TIFFs found under {src_root} for {conditions}')
 
-    day0 = min(dt for _, _, _, dt, _ in images)
+    try:
+        day0 = date.fromisoformat(args.day_zero) if args.day_zero else min(dt for _, _, _, dt, _ in images)
+    except ValueError as exc:
+        raise SystemExit(f'Invalid --day-zero date: {args.day_zero}') from exc
     model = seg.models.CellposeModel(gpu=True)
     metrics: list[dict] = []
     total = len(images)
