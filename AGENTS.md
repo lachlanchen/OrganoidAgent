@@ -5,7 +5,6 @@
 - `web/`: PWA assets (`index.html`, `app.js`, `styles.css`, `sw.js`, `manifest.json`, `icons/`).
 - `scripts/`: Dataset download helpers (Zenodo/Figshare/GitHub).
 - `datasets/`: Downloaded data and caches (git-ignored).
-- `papers/`: Submodule holding reference material (`papers/prompt-is-all-you-need`).
 
 ## Build, Test, and Development Commands
 - Start the app (backend + PWA served by Tornado):

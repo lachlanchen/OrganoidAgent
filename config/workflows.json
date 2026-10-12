@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "global_policy": {
+    "strict_pipeline": true,
+    "selected_inputs_only": true,
+    "allow_algorithm_substitution": false,
+    "allow_runtime_package_installation": false,
+    "on_required_method_failure": "stop_and_report_error"
+  },
+  "environments": {
+    "cellpose_windows_python": "D:\\app\\conda\\envs\\cellpose\\python.exe",
+    "viability_windows_python": "D:\\app\\conda\\envs\\torch38\\python.exe"
+  },
+  "workflows": {
+    "neo_cpsam": {
+      "display_name": "NEO CellposeSAM morphology analysis",
+      "method": "Cellpose 4.0.5 pretrained cpsam segmentation with default eval parameters, followed by OrganoID-compatible and OrganoSeg2-style instance morphology measurements",
+      "requires_cellpose": true,
+      "execution_mode": "managed_backend",
+      "managed_endpoint": "http://127.0.0.1:8080/api/morphology/run",
+      "python_environment": "cellpose_windows_python",
+      "dataset_dirs": ["07_NEO"],
+      "preferred_entrypoint": "scripts/run_neo_cpsam_morphology.py",
+      "fallback": "none; retain masks and flag border-touching instances for review"
+    },
+    "zhengyu": {
+      "display_name": "DEO multiscale segmentation and metric pipeline",
+      "method": "Original App81 density workflow: condition/day-aware multiscale Cellpose, signal-derived large-object candidates, overlap-aware candidate merge, and full metric backfill",
+      "requires_cellpose": true,
+      "execution_mode": "managed_backend",
+      "managed_endpoint": "http://127.0.0.1:8080/api/morphology/run",
+      "python_environment": "cellpose_windows_python",
+      "dataset_dirs": ["01_Density_experiment_10x"],
+      "preferred_entrypoint": "scripts/run_deo_original_managed.py --workflow app81",
+      "fallback": "original App81 signal-recovery candidates are merged using the original overlap-aware rules"
+    },
+    "y27632": {
+      "display_name": "Y-27632 dataset analysis",
+      "method": "Original App80 Y-27632 date-aware multiscale Cellpose and signal-based large-mass recovery pipeline",
+      "requires_cellpose": true,
+      "execution_mode": "managed_backend",
+      "managed_endpoint": "http://127.0.0.1:8080/api/morphology/run",
+      "python_environment": "cellpose_windows_python",
+      "dataset_dirs": ["03_Y-27632_experiment_10x"],
+      "preferred_entrypoint": "scripts/run_deo_original_managed.py --workflow app80",
+      "fallback": "original App80 signal-recovery candidates are merged using the original overlap-aware rules"
+    },
+    "sodium_alginate": {
+      "display_name": "Sodium alginate dataset analysis",
+      "method": "Original App65 sodium alginate condition/day-aware multiscale Cellpose and signal-based large-mass recovery pipeline",
+      "requires_cellpose": true,
+      "execution_mode": "managed_backend",
+      "managed_endpoint": "http://127.0.0.1:8080/api/morphology/run",
+      "python_environment": "cellpose_windows_python",
+      "dataset_dirs": ["02_Sodium_alginate_experiment_10x"],
+      "preferred_entrypoint": "scripts/run_deo_original_managed.py --workflow app65",
+      "fallback": "original App65 signal-recovery candidates are merged using the original overlap-aware rules"
+    },
+    "organoid_analysis": {
+      "display_name": "Viability Detection",
+      "method": "Agent-routed morphology and viability analysis. Use Cellpose-first morphology for brightfield morphology requests; use YOLO plus SAM as the morphology stage for viability requests, then run the existing viability model on its crop.",
+      "execution_mode": "agent_orchestrated",
+      "dataset_dirs": ["05_Fluorescence_demo"],
+      "tools": {
+        "morphology": {
+          "brightfield": "POST /api/morphology/run with the selected files and the appropriate workflow_id: zhengyu, y27632, or sodium_alginate.",
+          "viability_roi": "POST /api/fluorescence/run; this existing tool performs YOLO detection plus SAM segmentation and writes the existing crop, mask, overlay, and evidence outputs."
+        },
+        "viability": "Use the existing /api/fluorescence/run workflow after YOLO+SAM ROI preparation."
+      },
+      "routing": [
+        "If the prompt asks for morphology, area, object count, density, growth, roundness, fusion, or condition/day comparison, use Cellpose morphology and preserve its existing QC/fallback/selection logic.",
+        "If the prompt asks for viability, live/dead activity, viability score, or activity ranking, use the existing YOLO+SAM plus viability workflow.",
+        "If the prompt asks for both, run both existing workflows on the selected inputs and report their outputs separately.",
+        "After results exist, interpret only measured values and segmentation evidence. If the user requests a table or chart, format the result table and call /api/charts/generate with the produced CSV or JSON and requested fields.",
+        "Do not replace Cellpose, signal recovery, YOLO, SAM, or the viability model with another algorithm."
+      ],
+      "fallback": "none; report the exact failed tool and preserve any completed branch outputs"
+    },
+    "organoid_profiler": {
+      "display_name": "24-Dimension Organoid Profiling",
+      "method": "YOLO plus SAM segmentation followed by the repository-local 24-dimensional organoid profile. Pixel size is optional; omit it for pixel units or provide a positive physical length per pixel for scaled lengths and areas.",
+      "execution_mode": "agent_orchestrated",
+      "managed_endpoint": "http://127.0.0.1:8080/api/organoid-profiler/run",
+      "python_environment": "viability_windows_python",
+      "dataset_dirs": ["06_OrganoidProfiler_49"],
+      "tools": ["YOLO", "SAM", "organoid_profiler_24d"],
+      "routing": [
+        "Use only selected TIFF files from 06_OrganoidProfiler_49.",
+        "POST the selected files, optional pixel_size, and generate_charts=true when the user requests graphs to /api/organoid-profiler/run.",
+        "When other result tables need plots, use POST /api/charts/generate with the results CSV/JSON and requested metrics.",
+        "Do not use Cellpose or the viability checkpoint for this workflow.",
+        "Preserve per-image masks, overlays, crops, CSV, JSON, day/group growth rates, and requested chart files."
+      ],
+      "fallback": "none; report the exact failed tool and preserve completed outputs"
+    },
+    "fluorescence": {
+      "display_name": "Viability detection",
+      "method": "deterministic YOLO plus SAM segmentation and checkpoint-1 viability prediction",
+      "requires_cellpose": false,
+      "python_environment": "viability_windows_python",
+      "entrypoint": "scripts/run_fluorescence_prediction.py",
+      "fallback": "none"
+    }
+  }
+}

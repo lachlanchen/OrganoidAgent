@@ -1,18 +1,23 @@
+self.skipWaiting();
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== "organoid-agent-v3").map((key) => caches.delete(key)))
-    )
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((key) => key !== "organoid-agent-v72").map((key) => caches.delete(key)))
+      ),
+      self.clients.claim(),
+    ])
   );
 });
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("organoid-agent-v3").then((cache) =>
+        caches.open("organoid-agent-v72").then((cache) =>
       cache.addAll([
         "/",
-        "/static/styles.css",
-        "/static/app.js",
+        "/static/styles.css?v=55",
+        "/static/app.js?v=71",
         "/static/manifest.json",
         "/static/icons/icon-192.png",
         "/static/icons/icon-512.png",
@@ -26,18 +31,31 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) return;
+  const isAppShell =
+    url.pathname === "/" ||
+    url.pathname === "/static/app.js" ||
+    url.pathname === "/static/styles.css";
+  if (isAppShell) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open("organoid-agent-v72").then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
   event.respondWith(
-    caches.match(request).then((cached) => {
-      return (
+    caches.match(request).then(
+      (cached) =>
         cached ||
         fetch(request).then((response) => {
           const copy = response.clone();
-          caches.open("organoid-agent-v3").then((cache) => {
-            cache.put(request, copy);
-          });
+          caches.open("organoid-agent-v72").then((cache) => cache.put(request, copy));
           return response;
         })
-      );
-    })
+    )
   );
 });

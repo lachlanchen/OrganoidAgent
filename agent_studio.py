@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import re
 import shutil
+import subprocess
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -17,6 +20,38 @@ from typing import Any
 FINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 REASONING_LEVELS = {"low", "medium", "high", "xhigh"}
 ALLOWED_STEP_BLOCKS = {"plan", "work", "debug", "fix", "summary", "commit_push"}
+
+
+def resolve_codex_executable() -> str | None:
+    configured = os.environ.get("ORGANOID_AGENT_CODEX_EXECUTABLE", "").strip()
+    candidates = [configured, shutil.which("codex")]
+    local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
+    if local_app_data:
+        candidates.append(str(Path(local_app_data) / "Programs" / "OpenAI" / "Codex" / "bin" / "codex.exe"))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return str(Path(candidate).resolve())
+    return None
+
+
+def prepare_codex_environment(repo_root: Path, job_dir: Path) -> dict[str, str]:
+    """Give Codex a writable home/temp area while retaining the user's login."""
+    env = os.environ.copy()
+    runtime_home = repo_root / ".runtime" / "codex-home"
+    runtime_tmp = job_dir / "tmp"
+    runtime_home.mkdir(parents=True, exist_ok=True)
+    runtime_tmp.mkdir(parents=True, exist_ok=True)
+    source_home = Path(env.get("CODEX_HOME") or (Path.home() / ".codex"))
+    for name in ("auth.json", "config.toml", "installation_id"):
+        source = source_home / name
+        target = runtime_home / name
+        if source.is_file() and (not target.exists() or source.stat().st_mtime > target.stat().st_mtime):
+            shutil.copy2(source, target)
+    env["CODEX_HOME"] = str(runtime_home)
+    env["TEMP"] = str(runtime_tmp)
+    env["TMP"] = str(runtime_tmp)
+    env["TMPDIR"] = str(runtime_tmp)
+    return env
 
 
 def now_iso() -> str:
@@ -46,6 +81,42 @@ def tail_text(path: Path, max_chars: int = 12000) -> str:
         return ""
     text = path.read_text(encoding="utf-8", errors="replace")
     return text[-max_chars:]
+
+
+def _run_subprocess_windows(
+    cmd: list[str],
+    cwd: str,
+    env: dict[str, str],
+    stdin_bytes: bytes,
+    timeout_s: float,
+    on_start=None,
+    on_finish=None,
+) -> tuple[int, bytes, bytes]:
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_NEW_PROCESS_GROUP,
+        startupinfo=startupinfo,
+    )
+    if on_start:
+        on_start(proc)
+    try:
+        stdout, stderr = proc.communicate(stdin_bytes, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise
+    finally:
+        if on_finish:
+            on_finish(proc)
+    return int(proc.returncode), stdout, stderr
 
 
 def safe_token(value: str, label: str) -> str:
@@ -96,10 +167,53 @@ def _parse_json_object(raw: str, line_no: int) -> dict[str, Any]:
     return payload
 
 
+def _logical_aaps_lines(text: str) -> list[tuple[int, str]]:
+    """Join wrapped TASK/STEP/ACTION JSON while preserving statement line numbers."""
+    statements: list[tuple[int, str]] = []
+    buffer: list[str] = []
+    start_line = 0
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        line = _strip_comment(raw).strip()
+        if not line:
+            continue
+        if not buffer and line == "AUTOAPPDEV_PIPELINE 1":
+            statements.append((line_no, line))
+            continue
+        if not buffer:
+            start_line = line_no
+        buffer.append(line)
+        for char in line:
+            if escaped:
+                escaped = False
+                continue
+            if char == "\\" and in_string:
+                escaped = True
+                continue
+            if char == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+        if depth == 0 and not in_string:
+            statements.append((start_line, " ".join(buffer)))
+            buffer = []
+
+    if buffer:
+        raise ParseError("unterminated JSON statement", start_line)
+    return statements
+
+
 def parse_aaps(text: str) -> dict[str, Any]:
     """Parse the compact AAPS pipeline format used by AutoAppDev-style studios."""
-    lines = text.splitlines()
-    first = next((line.strip() for line in lines if line.strip() and not line.strip().startswith("#")), "")
+    statements = _logical_aaps_lines(text)
+    first = statements[0][1] if statements else ""
     if first != "AUTOAPPDEV_PIPELINE 1":
         raise ParseError('first non-comment line must be "AUTOAPPDEV_PIPELINE 1"', 1)
 
@@ -107,8 +221,7 @@ def parse_aaps(text: str) -> dict[str, Any]:
     current_task: dict[str, Any] | None = None
     current_step: dict[str, Any] | None = None
 
-    for line_no, raw in enumerate(lines, start=1):
-        line = _strip_comment(raw).strip()
+    for line_no, line in statements:
         if not line or line == "AUTOAPPDEV_PIPELINE 1":
             continue
         keyword, sep, rest = line.partition(" ")
@@ -224,10 +337,72 @@ class CodexJobManager:
         self.runtime_root = runtime_root
         self.jobs_root = runtime_root / "codex-jobs"
         self.jobs_root.mkdir(parents=True, exist_ok=True)
-        self.default_model = os.environ.get("ORGANOID_AGENT_CODEX_MODEL", "gpt-5.5")
-        self.default_timeout_s = float(os.environ.get("ORGANOID_AGENT_CODEX_TIMEOUT_S", "1200"))
+        self.default_model = os.environ.get("ORGANOID_AGENT_CODEX_MODEL", "gpt-5.6-sol")
+        self.default_timeout_s = float(os.environ.get("ORGANOID_AGENT_CODEX_TIMEOUT_S", "7200"))
         self.mock = os.environ.get("ORGANOID_AGENT_MOCK_CODEX", "").lower() in {"1", "true", "yes", "on"}
         self._tasks: dict[str, asyncio.Task] = {}
+        self._processes: dict[str, Any] = {}
+        self._process_lock = threading.Lock()
+        self._mark_interrupted_jobs()
+
+    def _mark_interrupted_jobs(self) -> None:
+        """Close non-final jobs left behind by a previous server process."""
+        for path in self.jobs_root.glob("*/job.json"):
+            job = read_json(path)
+            if not isinstance(job, dict) or str(job.get("status")) not in {"queued", "running"}:
+                continue
+            job.update(
+                {
+                    "status": "failed",
+                    "finished_at": now_iso(),
+                    "updated_at": now_iso(),
+                    "error": "server_restarted",
+                    "detail": "The web server restarted before this job completed; the job is no longer running.",
+                }
+            )
+            atomic_write_json(path, job)
+
+    def _set_process(self, job_id: str, proc: Any) -> None:
+        with self._process_lock:
+            self._processes[job_id] = proc
+
+    def _clear_process(self, job_id: str, proc: Any) -> None:
+        with self._process_lock:
+            if self._processes.get(job_id) is proc:
+                self._processes.pop(job_id, None)
+
+    def cancel_job(self, job_id: str) -> dict[str, Any]:
+        jid = safe_token(job_id, "job id")
+        job = self.read_job(jid)
+        if str(job.get("status")) in FINAL_STATUSES:
+            return self.job_status(jid, include_logs=True, include_output=True)
+        with self._process_lock:
+            proc = self._processes.get(jid)
+        if proc is not None:
+            try:
+                if os.name == "nt" and getattr(proc, "pid", None):
+                    subprocess.run(
+                        ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                        capture_output=True,
+                        timeout=15,
+                        check=False,
+                    )
+                else:
+                    proc.kill()
+            except (OSError, subprocess.SubprocessError):
+                pass
+        task = self._tasks.get(jid)
+        if task and not task.done():
+            task.cancel()
+        self.update_job(
+            jid,
+            {
+                "status": "cancelled",
+                "finished_at": now_iso(),
+                "error": "cancelled_by_user",
+            },
+        )
+        return self.job_status(jid, include_logs=True, include_output=True)
 
     def new_job_id(self, tool: str) -> str:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -267,11 +442,28 @@ class CodexJobManager:
         mode = "assistant job that may inspect and edit this repo" if job["tool"] == "assistant" else "reply job"
         transcript = payload.get("transcript")
         pipeline = str(payload.get("pipeline_text") or "").strip()
-        extra_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+        raw_context = payload.get("extra_context", payload.get("context"))
+        extra_context = raw_context if isinstance(raw_context, dict) else {}
+        job_purpose = str(extra_context.get("job_purpose") or "analysis_run")
+        managed_instruction = (
+            "This is result post-processing: read only the completed result artifacts named by the user; do not submit or rerun a managed analysis job."
+            if job_purpose == "result_summary"
+            else "When execution_policy specifies execution_mode=managed_backend, submit exactly one job to its managed_endpoint and never launch the underlying script from a Codex shell."
+        )
         parts = [
             "You are OrganoidAgent Studio running inside the local OrganoidAgent repository.",
             f"Mode: {mode}.",
+            f"Studio job id: {job['id']}.",
             "Keep answers concise and concrete. If this is an assistant job, complete the requested repo task end-to-end when feasible.",
+            "The selected AAPS pipeline and execution_policy are authoritative constraints, not suggestions.",
+            "Use only explicitly selected input files when any are present. Never expand to the whole dataset in that case.",
+            "Do not substitute a different segmentation or analysis algorithm, invent a fallback, or install packages at runtime.",
+            "If the required method or configured environment fails, stop and report the exact command and complete error.",
+            "Use Cellpose only when the selected workflow requires it, with the configured Cellpose Python executable.",
+            managed_instruction,
+            "For managed-backend paths, send analysis_input.selected_files[].relative_path exactly; never substitute absolute_path.",
+            "Preserve the user's output request exactly. Do not request statistical figures, galleries, crops, masks, or diagnostic images unless the user explicitly asks for them.",
+            "Use scripts/run_fluorescence_prediction.py only when Viability Detection is selected; do not redirect morphology workflows to viability prediction.",
             "",
             "User request:",
             str(payload.get("prompt") or "").strip(),
@@ -350,11 +542,15 @@ class CodexJobManager:
             if self.mock or bool(payload.get("mock")):
                 atomic_write_text(job_dir / "output.txt", f"Mock OrganoidAgent Studio result:\n{payload.get('prompt', '')}\n")
                 return self.update_job(job_id, {"status": "succeeded", "finished_at": now_iso(), "elapsed_seconds": round(time.monotonic() - started, 2), "returncode": 0})
-            if not shutil.which("codex"):
-                raise CodexJobError("codex_not_found", "codex executable was not found on PATH")
+            codex_executable = resolve_codex_executable()
+            if not codex_executable:
+                raise CodexJobError(
+                    "codex_not_found",
+                    "codex executable was not found; set ORGANOID_AGENT_CODEX_EXECUTABLE",
+                )
 
             cmd = [
-                "codex",
+                codex_executable,
                 "exec",
                 "--ephemeral",
                 "--model",
@@ -373,26 +569,56 @@ class CodexJobManager:
             cmd.append("-")
 
             timeout_s = max(10.0, min(float(payload.get("timeout_s") or self.default_timeout_s), 7200.0))
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=str(self.repo_root),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=os.environ.copy(),
-            )
-            try:
-                out_b, err_b = await asyncio.wait_for(proc.communicate(prompt.encode("utf-8")), timeout=timeout_s)
-            except asyncio.TimeoutError as exc:
-                proc.kill()
-                await proc.wait()
-                raise CodexJobError("timeout", f"codex exec exceeded timeout_s={timeout_s}") from exc
+            codex_env = prepare_codex_environment(self.repo_root, job_dir)
+            if os.name == "nt":
+                try:
+                    loop = asyncio.get_running_loop()
+                    returncode, out_b, err_b = await loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            _run_subprocess_windows,
+                            cmd,
+                            str(self.repo_root),
+                            codex_env,
+                            prompt.encode("utf-8"),
+                            timeout_s,
+                            lambda proc: self._set_process(job_id, proc),
+                            lambda proc: self._clear_process(job_id, proc),
+                        ),
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise CodexJobError(
+                        "timeout", f"codex exec exceeded timeout_s={timeout_s}"
+                    ) from exc
+            else:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=str(self.repo_root),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=codex_env,
+                )
+                self._set_process(job_id, proc)
+                try:
+                    out_b, err_b = await asyncio.wait_for(
+                        proc.communicate(prompt.encode("utf-8")), timeout=timeout_s
+                    )
+                except asyncio.TimeoutError as exc:
+                    proc.kill()
+                    await proc.wait()
+                    raise CodexJobError(
+                        "timeout", f"codex exec exceeded timeout_s={timeout_s}"
+                    ) from exc
+                finally:
+                    self._clear_process(job_id, proc)
+                returncode = int(proc.returncode)
             atomic_write_text(job_dir / "stdout.log", out_b.decode("utf-8", errors="replace"))
             atomic_write_text(job_dir / "stderr.log", err_b.decode("utf-8", errors="replace"))
-            status = "succeeded" if proc.returncode == 0 and (job_dir / "output.txt").exists() else "failed"
-            updates = {"status": status, "finished_at": now_iso(), "elapsed_seconds": round(time.monotonic() - started, 2), "returncode": proc.returncode}
+            status = "succeeded" if returncode == 0 and (job_dir / "output.txt").exists() else "failed"
+            updates = {"status": status, "finished_at": now_iso(), "elapsed_seconds": round(time.monotonic() - started, 2), "returncode": returncode}
             if status == "failed":
-                updates["error"] = f"codex exec failed with returncode {proc.returncode}"
+                updates["error"] = f"codex exec failed with returncode {returncode}"
             return self.update_job(job_id, updates)
         except CodexJobError as exc:
             atomic_write_text(job_dir / "stderr.log", exc.detail + "\n")
@@ -424,3 +650,15 @@ class CodexJobManager:
                 continue
             jobs.append(job)
         return sorted(jobs, key=lambda item: str(item.get("created_at") or ""), reverse=True)[: max(1, min(limit, 200))]
+
+    def list_active_jobs(self) -> list[dict[str, Any]]:
+        """Return jobs backed by a live task in this server process."""
+        active = []
+        for job_id, task in list(self._tasks.items()):
+            if task.done():
+                continue
+            try:
+                active.append(self.read_job(job_id))
+            except FileNotFoundError:
+                continue
+        return sorted(active, key=lambda item: str(item.get("created_at") or ""), reverse=True)

@@ -1,22 +1,65 @@
 #!/usr/bin/env python3
 import argparse
+import asyncio
+import functools
 import gzip
 import hashlib
 import io
 import json
+import math
 import mimetypes
 import os
+import re
 import shutil
+import ssl
 import sqlite3
+import subprocess
+import sys
 import tarfile
+import threading
 import time
+import uuid
 import zipfile
 from pathlib import Path
+
+
+def configure_windows_ca_fallback():
+    """Use certifi only when Python cannot parse the Windows certificate store."""
+    if os.name != "nt":
+        return
+    try:
+        ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    except ssl.SSLError as exc:
+        if "ASN1" not in str(exc) and "NOT_ENOUGH_DATA" not in str(exc):
+            raise
+        try:
+            import certifi
+        except ImportError:
+            raise RuntimeError(
+                "The Windows certificate store is unreadable and certifi is not installed."
+            ) from exc
+
+        ca_bundle = certifi.where()
+
+        def load_certifi_defaults(context, purpose=ssl.Purpose.SERVER_AUTH):
+            context.load_verify_locations(cafile=ca_bundle)
+
+        ssl.SSLContext.load_default_certs = load_certifi_defaults
+
+
+configure_windows_ca_fallback()
 
 import tornado.ioloop
 import tornado.web
 
-from agent_studio import CodexJobError, CodexJobManager, ParseError, StudioChatStore, parse_aaps
+
+async def run_in_thread(function, *args, **kwargs):
+    """Python 3.8-compatible equivalent of asyncio.to_thread."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, functools.partial(function, *args, **kwargs))
+
+from agent_studio import CodexJobError, CodexJobManager, ParseError, StudioChatStore, parse_aaps, tail_text
+from review_store import ReviewStore
 
 try:
     import pandas as pd
@@ -48,12 +91,67 @@ except Exception:  # pragma: no cover - optional at runtime
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "datasets"
 WEB_DIR = BASE_DIR / "web"
+WORKFLOW_SETTINGS_PATH = BASE_DIR / "config" / "workflows.json"
 METADATA_DIR = BASE_DIR / "metadata"
 CACHE_DIR = DATA_DIR / ".cache"
 PREVIEW_DIR = CACHE_DIR / "previews"
 STUDIO_DIR = BASE_DIR / "analysis-outputs" / "organoid_agent_studio"
+AGENT_REPORT_DIR = STUDIO_DIR / "reports"
+FLUORESCENCE_DIR = BASE_DIR / "fluorescence_prediction"
+FLUORESCENCE_OUTPUT_DIR = BASE_DIR / "analysis-outputs" / "fluorescence_prediction" / "web"
+PROFILER_OUTPUT_DIR = BASE_DIR / "analysis-outputs" / "organoid_profiler" / "web"
+FLUORESCENCE_LOCK = threading.Lock()
+PROFILER_LOCK = threading.Lock()
+FLUORESCENCE_ACTIVE_JOB_ID = None
+FLUORESCENCE_ACTIVE_PROCESS = None
+MORPHOLOGY_OUTPUT_DIR = BASE_DIR / "analysis-outputs" / "morphology_jobs"
+MORPHOLOGY_LOCK = threading.Lock()
+MORPHOLOGY_ACTIVE = {"job_id": None, "process": None}
+MORPHOLOGY_TASKS = set()
+MORPHOLOGY_WORKFLOW_ADAPTERS = {
+    "neo_cpsam": {
+        "experiment": "neo_cpsam",
+        "dataset_dirs": {"07_NEO"},
+        "filename_pattern": r".+_img\.jpg$",
+        "extensions": {".jpg", ".jpeg", ".png"},
+        "entrypoint": "scripts/run_neo_cpsam_morphology.py",
+    },
+    "zhengyu": {
+        "experiment": "density",
+        "dataset_dirs": {"01_Density_experiment_10x"},
+        "filename_pattern": r"(?:low|middle|high).*_D\d{2}_",
+        "entrypoint": "scripts/run_deo_original_managed.py",
+        "entrypoint_args": ["--workflow", "app81"],
+    },
+    "y27632": {
+        "experiment": "y27632",
+        "dataset_dirs": {"03_Y-27632_experiment_10x"},
+        "filename_pattern": r"Y27632_(?:0|10|20|50|100)uM_D\d{2}_",
+        "entrypoint": "scripts/run_deo_original_managed.py",
+        "entrypoint_args": ["--workflow", "app80"],
+    },
+    "sodium_alginate": {
+        "experiment": "sodium_alginate",
+        "dataset_dirs": {"02_Sodium_alginate_experiment_10x"},
+        "filename_pattern": r"(?:control|alginate_0\.0[25]pct)_D\d{2}_",
+        "entrypoint": "scripts/run_deo_original_managed.py",
+        "entrypoint_args": ["--workflow", "app65"],
+    },
+}
 CHAT_STORE = StudioChatStore(STUDIO_DIR / "chat")
 CODEX_JOBS = CodexJobManager(BASE_DIR, STUDIO_DIR)
+REVIEW_STORE = ReviewStore(STUDIO_DIR / "reviews")
+
+
+def load_workflow_settings():
+    try:
+        payload = json.loads(WORKFLOW_SETTINGS_PATH.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+WORKFLOW_SETTINGS = load_workflow_settings()
 
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
@@ -62,6 +160,7 @@ ANALYSIS_EXTS = {".h5ad", ".h5", ".hdf5"}
 ARCHIVE_EXTS = {".zip", ".tgz", ".tar", ".tar.gz"}
 DOC_EXTS = {".pdf", ".docx"}
 MAX_ARCHIVE_PREVIEW_BYTES = 50 * 1024 * 1024
+MAX_FLUORESCENCE_FILES = 30
 
 DATASET_METADATA = {
     "zenodo_10643410": "zenodo_10643410.md",
@@ -70,7 +169,6 @@ DATASET_METADATA = {
 DATABASE_SCAN_ROOTS = [
     ("OrganoidAgent", BASE_DIR / "analysis-outputs"),
     ("Zhengyu", BASE_DIR.parent / "Zhengyu"),
-    ("Compactness", BASE_DIR.parent / "Compactness"),
 ]
 
 
@@ -82,12 +180,574 @@ def format_bytes(num):
     return f"{num:.1f}PB"
 
 
-def safe_dataset_path(rel_path):
-    rel_path = rel_path.lstrip("/").replace("..", "")
-    full = (DATA_DIR / rel_path).resolve()
-    if not str(full).startswith(str(DATA_DIR.resolve())):
-        raise ValueError("Invalid path")
+def safe_dataset_path(raw_path):
+    """Resolve relative or absolute inputs, but never leave the datasets root."""
+    dataset_root = DATA_DIR.resolve()
+    raw_text = str(raw_path).strip()
+    candidate = Path(raw_text)
+    if candidate.is_absolute():
+        full = candidate.resolve()
+    else:
+        relative = raw_text.replace("\\", "/")
+        if relative == "datasets":
+            relative = ""
+        elif relative.startswith("datasets/"):
+            relative = relative.removeprefix("datasets/")
+        full = (dataset_root / relative).resolve()
+    try:
+        full.relative_to(dataset_root)
+    except ValueError as exc:
+        raise ValueError("Invalid path: inputs must be inside datasets.") from exc
     return full
+
+
+def safe_visualization_path(raw_path):
+    """Resolve a visualization item within datasets or analysis-outputs."""
+    raw_text = str(raw_path).strip().replace("\\", "/")
+    if raw_text.startswith("analysis-outputs/"):
+        root = (BASE_DIR / "analysis-outputs").resolve()
+        full = (BASE_DIR / raw_text).resolve()
+        try:
+            full.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Invalid analysis output path.") from exc
+        return full, "analysis-output"
+    return safe_dataset_path(raw_text), "dataset"
+
+
+def morphology_output_options(instruction):
+    """Translate explicit output requests without enabling unsolicited figures."""
+    text = re.sub(r"\s+", " ", str(instruction or "")).strip().lower()
+
+    def explicitly_requested(keywords, negative_keywords=()):
+        if not any(keyword in text for keyword in keywords):
+            return False
+        negative_leads = ("do not", "don't", "without", "no ", "不要", "不用", "无需", "不生成", "不需要")
+        for keyword in (*keywords, *negative_keywords):
+            if keyword not in text:
+                continue
+            position = text.find(keyword)
+            prefix = text[max(0, position - 18) : position]
+            if any(lead in prefix for lead in negative_leads):
+                return False
+        return True
+
+    return {
+        "overlays": True,
+        "report": True,
+        "statistics_figures": explicitly_requested(
+            ("statistical figure", "statistical chart", "statistics figure", "statistics chart", "metric figure", "summary figure", "line graph", "line chart", "graph", "chart", "plot", "统计图", "统计图片", "折线图", "曲线图", "柱状图")
+        ),
+        "comparison_gallery": explicitly_requested(("comparison gallery", "comparison figure", "对比图", "比较图", "拼图")),
+        "object_crops": explicitly_requested(("object crop", "organoid crop", "cropped object", "裁剪图", "裁切图")),
+        "diagnostic_images": explicitly_requested(("diagnostic image", "intermediate image", "instance mask", "signal image", "support mask", "中间图", "诊断图", "实例掩膜", "信号图", "支撑掩膜")),
+        "results_csv": explicitly_requested(("csv", "spreadsheet", "metric table", "data table", "数据表", "指标表")),
+    }
+
+
+def fluorescence_runtime_status():
+    python_path = workflow_python("viability_windows_python", "ORGANOID_FLUORESCENCE_PYTHON")
+    required = {
+        "viability": FLUORESCENCE_DIR / "weights" / "viability_best.pth",
+        "yolo": FLUORESCENCE_DIR / "weights" / "yolo_organoid_best.pt",
+        "sam": FLUORESCENCE_DIR / "weights" / "sam_vit_b_01ec64.pth",
+    }
+    progress = None
+    if FLUORESCENCE_ACTIVE_JOB_ID:
+        progress_path = FLUORESCENCE_OUTPUT_DIR / FLUORESCENCE_ACTIVE_JOB_ID / "progress.json"
+        try:
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            progress = None
+    return {
+        "ready": python_path is not None and all(path.is_file() for path in required.values()),
+        "python": str(python_path) if python_path else None,
+        "weights": {name: path.is_file() for name, path in required.items()},
+        "busy": FLUORESCENCE_LOCK.locked(),
+        "active_job_id": FLUORESCENCE_ACTIVE_JOB_ID,
+        "progress": progress,
+        "max_files": MAX_FLUORESCENCE_FILES,
+    }
+
+
+def workflow_python(config_key, environment_variable):
+    """Resolve a workflow interpreter while preserving configured Windows environments."""
+    configured_env = os.environ.get(environment_variable, "").strip()
+    configured_file = str(WORKFLOW_SETTINGS.get("environments", {}).get(config_key, "")).strip()
+    candidates = [configured_env, configured_file, sys.executable]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate).resolve()
+    return None
+
+
+def run_fluorescence_subprocess(command):
+    global FLUORESCENCE_ACTIVE_PROCESS
+    with FLUORESCENCE_LOCK:
+        proc = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        FLUORESCENCE_ACTIVE_PROCESS = proc
+        try:
+            stdout, stderr = proc.communicate(timeout=7200)
+            return subprocess.CompletedProcess(command, proc.returncode, stdout, stderr)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            raise subprocess.TimeoutExpired(command, 7200, output=stdout, stderr=stderr)
+        finally:
+            if FLUORESCENCE_ACTIVE_PROCESS is proc:
+                FLUORESCENCE_ACTIVE_PROCESS = None
+
+
+def run_morphology_subprocess(command, job_id):
+    with MORPHOLOGY_LOCK:
+        proc = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        MORPHOLOGY_ACTIVE.update({"job_id": job_id, "process": proc})
+        try:
+            stdout, stderr = proc.communicate(timeout=12 * 60 * 60)
+            return proc.returncode, stdout, stderr
+        finally:
+            MORPHOLOGY_ACTIVE.update({"job_id": None, "process": None})
+
+
+def read_runtime_json(path, default=None):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+async def execute_morphology_job(job_id, command, job_dir):
+    job_path = job_dir / "job.json"
+    job = read_runtime_json(job_path, {})
+    if job.get("status") == "cancelled":
+        MORPHOLOGY_ACTIVE.update({"job_id": None, "process": None})
+        return
+    job.update({"status": "running", "started_at": time.time()})
+    job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        returncode, stdout, stderr = await run_in_thread(run_morphology_subprocess, command, job_id)
+        (job_dir / "stdout.log").write_text(stdout, encoding="utf-8")
+        (job_dir / "stderr.log").write_text(stderr, encoding="utf-8")
+        results_path = job_dir / "results.json"
+        status = "succeeded" if returncode == 0 and results_path.exists() else "failed"
+        current_job = read_runtime_json(job_path, {})
+        if current_job.get("status") == "cancelled":
+            return
+        job.update({"status": status, "returncode": returncode, "finished_at": time.time()})
+        if status == "failed":
+            job["error"] = "morphology_runner_failed"
+    except subprocess.TimeoutExpired:
+        job.update({"status": "failed", "error": "timeout", "finished_at": time.time()})
+    except Exception as exc:
+        job.update({"status": "failed", "error": f"{type(exc).__name__}: {exc}", "finished_at": time.time()})
+    job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    progress_path = job_dir / "progress.json"
+    progress = read_runtime_json(progress_path, {})
+    final_status = job.get("status", "failed")
+    progress.update({"status": final_status, "percent": 100.0 if final_status == "succeeded" else progress.get("percent", 0.0), "finished_at": job.get("finished_at")})
+    progress_path.write_text(json.dumps(progress, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if MORPHOLOGY_ACTIVE.get("job_id") == job_id:
+        MORPHOLOGY_ACTIVE.update({"job_id": None, "process": None})
+
+
+def analysis_output_asset_url(raw_path):
+    try:
+        relative = Path(raw_path).resolve().relative_to((BASE_DIR / "analysis-outputs").resolve())
+        return "/analysis-output-files/" + relative.as_posix()
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def morphology_result_payload(job_id, job_dir, results_path=None):
+    results_path = results_path or (job_dir / "results.json")
+    result = read_runtime_json(results_path)
+    if not isinstance(result, dict):
+        return None
+
+    for row in result.get("rows", []):
+        row["asset_urls"] = {
+            key: analysis_output_asset_url(row.get(path_key))
+            for key, path_key in {
+                "mask": "mask_path",
+                "overlay": "overlay_path",
+                "instances": "instance_rgb_path",
+                "cellpose_mask": "cellpose_mask_path",
+                "cellpose_overlay": "cellpose_overlay_path",
+                "cellpose_instances": "cellpose_instance_rgb_path",
+                "signal": "signal_path",
+                "support": "support_path",
+            }.items()
+        }
+    outputs = result.get("outputs", {})
+    result["download_urls"] = {
+        "csv": analysis_output_asset_url(outputs.get("results_csv")),
+        "json": analysis_output_asset_url(outputs.get("results_json")),
+        "report": analysis_output_asset_url(outputs.get("report_md")),
+        "gallery": analysis_output_asset_url(outputs.get("comparison_gallery")),
+        "summary_figure": analysis_output_asset_url(outputs.get("summary_metrics")),
+    }
+    try:
+        result["report_text"] = Path(outputs.get("report_md") or results_path.with_name("report.md")).read_text(encoding="utf-8")
+    except OSError:
+        result["report_text"] = ""
+    result["job_id"] = job_id
+    return result
+
+
+def discover_agent_morphology_artifacts(job_id):
+    job_dir = CODEX_JOBS.job_dir(job_id)
+    payload = read_runtime_json(job_dir / "input.json", {})
+    context = payload.get("extra_context", {}) if isinstance(payload, dict) else {}
+    analysis_input = context.get("analysis_input", {}) if isinstance(context, dict) else {}
+    selected = analysis_input.get("selected_files", []) if isinstance(analysis_input, dict) else []
+    if not selected and isinstance(analysis_input, dict) and analysis_input.get("selected_dataset", {}).get("absolute_path"):
+        selected = [{"absolute_path": str(path)} for path in Path(analysis_input["selected_dataset"]["absolute_path"]).rglob("*.tif")]
+    selected_paths = {
+        str(Path(item.get("absolute_path", "")).resolve()).lower()
+        for item in selected
+        if isinstance(item, dict) and item.get("absolute_path")
+    }
+    if not selected_paths:
+        return None
+    earliest = (job_dir / "input.json").stat().st_mtime - 5
+    managed_job_dir = None
+    managed_job = None
+    managed_root = BASE_DIR / "analysis-outputs" / "morphology_jobs"
+    if managed_root.exists():
+        for candidate in managed_root.iterdir():
+            candidate_job = read_runtime_json(candidate / "job.json") if candidate.is_dir() else None
+            if not isinstance(candidate_job, dict) or candidate_job.get("parent_job_id") != job_id:
+                continue
+            if float(candidate_job.get("created_at", 0)) < earliest:
+                continue
+            if managed_job is None or float(candidate_job.get("created_at", 0)) > float(managed_job.get("created_at", 0)):
+                managed_job_dir = candidate
+                managed_job = candidate_job
+    managed_progress = read_runtime_json(managed_job_dir / "progress.json", {}) if managed_job_dir else {}
+    if managed_job_dir and managed_job and managed_job.get("status") == "succeeded":
+        result_payload = morphology_result_payload(managed_job["job_id"], managed_job_dir)
+        if result_payload:
+            result_payload.update(
+                {
+                    "managed_job_id": managed_job["job_id"],
+                    "status": managed_job["status"],
+                    "progress": managed_progress,
+                    "completed": int(managed_progress.get("completed", len(result_payload.get("rows", [])))),
+                    "total": int(managed_progress.get("total", len(selected_paths))),
+                }
+            )
+    matched_rows = []
+    matched_metrics = []
+    roots = [BASE_DIR / "analysis-outputs" / "density_growth", BASE_DIR / "analysis-outputs" / "morphology_jobs"]
+    for root in roots:
+        if not root.exists():
+            continue
+        for metric_path in root.rglob("*_metrics.json"):
+            if metric_path.stat().st_mtime < earliest:
+                continue
+            row = read_runtime_json(metric_path)
+            if not isinstance(row, dict):
+                continue
+            source = row.get("source_tif") or row.get("source_path")
+            if not source or str(Path(source).resolve()).lower() not in selected_paths:
+                continue
+            row["asset_urls"] = {
+                key: analysis_output_asset_url(row.get(path_key))
+                for key, path_key in {"mask": "mask_path", "overlay": "overlay_path", "instances": "instance_rgb_path", "cellpose_mask": "cellpose_mask_path", "cellpose_overlay": "cellpose_overlay_path", "cellpose_instances": "cellpose_instance_rgb_path", "signal": "signal_path", "support": "support_path"}.items()
+            }
+            matched_rows.append(row)
+            matched_metrics.append(metric_path)
+    result_payload = None
+    for metric_path in matched_metrics:
+        for parent in metric_path.parents:
+            candidate = parent / "results.json"
+            if candidate.exists() and candidate.stat().st_mtime >= earliest:
+                result_payload = morphology_result_payload(job_id, parent, candidate)
+                break
+        if result_payload:
+            break
+    if result_payload:
+        result_payload["completed"] = len(result_payload.get("rows", []))
+        result_payload["total"] = len(selected_paths)
+        return result_payload
+    if managed_job is None and not matched_rows:
+        return None
+    return {
+        "job_id": managed_job.get("job_id") if managed_job else job_id,
+        "managed_job_id": managed_job.get("job_id") if managed_job else None,
+        "status": managed_job.get("status") if managed_job else "pending",
+        "progress": managed_progress,
+        "workflow": (
+            f"{MORPHOLOGY_WORKFLOW_ADAPTERS.get(managed_job.get('workflow_id'), {}).get('experiment', 'density')}_multiscale_cellpose_quality_selection"
+            if managed_job
+            else "density_multiscale_cellpose_quality_selection"
+        ),
+        "rows": matched_rows,
+        "completed": int(managed_progress.get("completed", len(matched_rows))),
+        "total": int(managed_progress.get("total", len(selected_paths))),
+        "partial": True,
+        "download_urls": {},
+        "report_text": "",
+    }
+
+
+def discover_agent_viability_artifacts(job_id):
+    """Find a fluorescence result created by an Agent job from selected inputs."""
+    job_dir = CODEX_JOBS.job_dir(job_id)
+    payload = read_runtime_json(job_dir / "input.json", {})
+    context = payload.get("extra_context", {}) if isinstance(payload, dict) else {}
+    selected = context.get("analysis_input", {}).get("selected_files", []) if isinstance(context, dict) else []
+    selected_paths = {
+        str(Path(item.get("absolute_path", "")).resolve()).lower()
+        for item in selected
+        if isinstance(item, dict) and item.get("absolute_path")
+    }
+    if not selected_paths:
+        return None
+    earliest = (job_dir / "input.json").stat().st_mtime - 5
+    best = None
+    if not FLUORESCENCE_OUTPUT_DIR.exists():
+        return None
+    for candidate in FLUORESCENCE_OUTPUT_DIR.iterdir():
+        if not candidate.is_dir():
+            continue
+        results_path = candidate / "results.json"
+        inputs_path = candidate / "inputs.json"
+        if not results_path.exists() or results_path.stat().st_mtime < earliest or not inputs_path.exists():
+            continue
+        try:
+            inputs = json.loads(inputs_path.read_text(encoding="utf-8"))
+            input_paths = {str(Path(item).resolve()).lower() for item in inputs if isinstance(item, str)}
+        except (OSError, ValueError, TypeError):
+            continue
+        if input_paths != selected_paths:
+            continue
+        if best is None or results_path.stat().st_mtime > best[0]:
+            best = (results_path.stat().st_mtime, candidate, results_path)
+    if best is None:
+        return None
+    _, output_dir, results_path = best
+    result = read_runtime_json(results_path, {})
+    if not isinstance(result, dict):
+        return None
+    result["job_id"] = output_dir.name
+    base_url = f"/fluorescence-outputs/{output_dir.name}"
+    for sample in result.get("samples", []):
+        sample["asset_urls"] = {key: f"{base_url}/{value}" for key, value in sample.get("assets", {}).items()}
+    result.update({
+        "results_url": f"{base_url}/results.json",
+        "csv_url": f"{base_url}/results.csv",
+        "report_url": f"{base_url}/report.md",
+        "status": result.get("status", "succeeded"),
+    })
+    return result
+
+
+def discover_agent_profiler_artifacts(job_id):
+    """Find a 24D profiler result created by an Agent job from selected inputs."""
+    job_dir = CODEX_JOBS.job_dir(job_id)
+    payload = read_runtime_json(job_dir / "input.json", {})
+    context = payload.get("extra_context", {}) if isinstance(payload, dict) else {}
+    analysis_input = context.get("analysis_input", {}) if isinstance(context, dict) else {}
+    selected = analysis_input.get("selected_files", []) if isinstance(analysis_input, dict) else []
+    if not selected and isinstance(analysis_input, dict) and analysis_input.get("selected_dataset", {}).get("absolute_path"):
+        selected = [{"absolute_path": str(path)} for path in Path(analysis_input["selected_dataset"]["absolute_path"]).rglob("*.tif")]
+    selected_paths = {str(Path(item.get("absolute_path", "")).resolve()).lower() for item in selected if isinstance(item, dict) and item.get("absolute_path")}
+    if not selected_paths or not PROFILER_OUTPUT_DIR.exists():
+        return None
+    earliest = (job_dir / "input.json").stat().st_mtime - 5
+    best = None
+    for candidate in PROFILER_OUTPUT_DIR.iterdir():
+        inputs_path, results_path = candidate / "inputs.json", candidate / "results.json"
+        if not candidate.is_dir() or not inputs_path.exists() or inputs_path.stat().st_mtime < earliest:
+            continue
+        try:
+            input_paths = {str(Path(item).resolve()).lower() for item in json.loads(inputs_path.read_text(encoding="utf-8"))}
+        except (OSError, ValueError, TypeError):
+            continue
+        if input_paths == selected_paths and (best is None or inputs_path.stat().st_mtime > best[0]):
+            best = (inputs_path.stat().st_mtime, candidate, results_path)
+    if best is None:
+        return None
+    _, output_dir, results_path = best
+    progress = read_runtime_json(output_dir / "progress.json", {})
+    if not results_path.exists():
+        return {"job_id": output_dir.name, "status": progress.get("status", "running"), "progress": progress, "rows": [], "total": int(progress.get("total", len(selected_paths))), "completed": int(progress.get("completed", 0))}
+    result = read_runtime_json(results_path, {})
+    if not isinstance(result, dict):
+        return None
+    base_url = f"/profiler-outputs/{output_dir.name}"
+    for row in result.get("rows", []):
+        row["asset_urls"] = {key: f"{base_url}/{Path(row[key]).relative_to(output_dir).as_posix()}" for key in ("overlay", "crop", "mask")}
+    result["chart_urls"] = []
+    for chart in result.get("charts", []):
+        chart = dict(chart)
+        chart_path = Path(chart["path"])
+        chart["url"] = f"{base_url}/{chart_path.relative_to(output_dir).as_posix()}"
+        result["chart_urls"].append(chart)
+    result.update({"job_id": output_dir.name, "results_url": f"{base_url}/results.json", "csv_url": f"{base_url}/results.csv", "progress": progress, "completed": int(progress.get("completed", len(result.get("rows", [])))), "total": int(progress.get("total", len(result.get("rows", []))))})
+    return result
+
+
+def profiler_fallback_report(artifacts):
+    """Create a factual report when the external Agent dies after the tool finishes."""
+    rows = artifacts.get("rows", []) if isinstance(artifacts, dict) else []
+    lines = [
+        "# 24-Dimension Organoid Profiling Report",
+        "",
+        "The YOLO + SAM profiler completed successfully. This report was finalized by the local workflow because the outer Agent process did not return after the profiler completed.",
+        "",
+        f"- Images: {len(rows)}",
+        "- Units: pixel space (pixel size was not supplied)",
+        "- Evidence: results JSON/CSV, masks, overlays, crops, and generated charts",
+        "",
+        "## Per-image measured summary",
+        "",
+        "| Day | Group | Image | Area (px²) | Growth rate | YOLO confidence | SAM score |",
+        "|---|---|---|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        lines.append(
+            "| {day} | {group} | {image} | {area} | {growth} | {yolo} | {sam} |".format(
+                day=row.get("day", "NA"),
+                group=row.get("group", "NA"),
+                image=str(row.get("image_name", "")).replace("|", "\\|"),
+                area=row.get("area", "NA"),
+                growth=row.get("growth_rate", "NA"),
+                yolo=row.get("yolo_confidence", "NA"),
+                sam=row.get("sam_score", "NA"),
+            )
+        )
+    chart_urls = artifacts.get("chart_urls", []) if isinstance(artifacts, dict) else []
+    if chart_urls:
+        lines.extend(["", "## Generated charts", ""])
+        for chart in chart_urls:
+            lines.append(f"- [{chart.get('metric', 'chart')}]({chart.get('url', '')})")
+    lines.extend([
+        "",
+        "The complete 24-dimensional values remain in the generated results.csv and results.json. Images with low confidence or questionable masks should be reviewed using the individual overlay and manual-review controls.",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def reconcile_orphaned_profiler_agent(job_id, profiler):
+    """Close an Agent job whose profiler child finished but Codex disappeared."""
+    if not isinstance(profiler, dict) or profiler.get("progress", {}).get("status") != "succeeded":
+        return False
+    job = CODEX_JOBS.read_job(job_id)
+    if job.get("status") != "running":
+        return False
+    # Do not interrupt a newly-started Codex process. Once the profiler has
+    # completed, however, a missing process after this grace period is an
+    # orphaned Agent wrapper rather than an active analysis.
+    started = (CODEX_JOBS.job_dir(job_id) / "input.json").stat().st_mtime
+    if time.time() - started < 30:
+        return False
+    with CODEX_JOBS._process_lock:
+        process_alive = job_id in CODEX_JOBS._processes
+    if process_alive:
+        return False
+    output = profiler_fallback_report(profiler)
+    job_dir = CODEX_JOBS.job_dir(job_id)
+    job_dir.joinpath("output.txt").write_text(output, encoding="utf-8")
+    task = CODEX_JOBS._tasks.get(job_id)
+    if task and not task.done():
+        task.cancel()
+    CODEX_JOBS.update_job(
+        job_id,
+        {
+            "status": "succeeded",
+            "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "elapsed_seconds": round(time.time() - started, 2),
+            "returncode": 0,
+            "detail": "Profiler completed; local fallback finalized the report after the Agent wrapper stopped responding.",
+        },
+    )
+    return True
+
+
+def persist_agent_result_summary(payload, report_text):
+    """Append an Agent result summary to the workflow's canonical report file."""
+    if not isinstance(payload, dict) or not report_text.strip():
+        return None
+    prompt = str(payload.get("prompt") or "")
+    matches = re.findall(r"(analysis-outputs/[A-Za-z0-9_./-]+/results\.json)", prompt)
+    for raw_path in matches:
+        result_path = (BASE_DIR / raw_path).resolve()
+        try:
+            result_path.relative_to((BASE_DIR / "analysis-outputs").resolve())
+        except ValueError:
+            continue
+        if not result_path.is_file():
+            continue
+        report_path = result_path.with_name("report.md")
+        marker = "## Agent result interpretation"
+        existing = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
+        if marker not in existing:
+            section = f"\n\n{marker}\n\n{report_text.strip()}\n"
+            report_path.write_text(existing.rstrip() + section, encoding="utf-8")
+        return report_path
+    return None
+
+
+def persist_viability_results_table(result, report_path):
+    """Write the measured viability table before the asynchronous AI summary."""
+    if not isinstance(result, dict) or not report_path:
+        return
+    report_path = Path(report_path)
+    if not report_path.is_file():
+        return
+    marker = "## Workflow results table"
+    existing = report_path.read_text(encoding="utf-8")
+    if marker in existing:
+        return
+    rows = []
+    for sample in result.get("samples", []):
+        segmentation = sample.get("segmentation") or {}
+        rows.append({
+            "image": sample.get("filename", ""),
+            "viability": float(sample.get("viability", 0.0)),
+            "percent": sample.get("viability_percent", "NA"),
+            "level": sample.get("level", "Unknown"),
+            "regions": 1 if segmentation else 0,
+            "status": "Succeeded",
+            "failure": "—",
+        })
+    for failure in result.get("failures", []):
+        if isinstance(failure, dict):
+            name = failure.get("filename") or failure.get("image") or "unknown"
+            reason = failure.get("error") or failure.get("reason") or "analysis failed"
+        else:
+            name, reason = str(failure), "analysis failed"
+        rows.append({"image": name, "viability": -1.0, "percent": "NA", "level": "Failed", "regions": 0, "status": "Failed", "failure": reason})
+    rows.sort(key=lambda row: row["viability"], reverse=True)
+    lines = [
+        marker,
+        "",
+        "This measured table is generated directly from the completed YOLO/SAM and viability results before the asynchronous Agent interpretation.",
+        "",
+        "| Image | Predicted viability | Classification | Valid detection regions | Analysis status | Failure reason |",
+        "|---|---:|---|---:|---|---|",
+    ]
+    for row in rows:
+        lines.append("| {image} | {percent} | {level} | {regions} | {status} | {failure} |".format(**{key: str(value).replace("|", "\\|") for key, value in row.items() if key != "viability"}))
+    report_path.write_text(existing.rstrip() + "\n\n" + "\n".join(lines) + "\n", encoding="utf-8")
 
 
 def file_kind(path):
@@ -246,6 +906,63 @@ def list_files(dataset_path):
             }
         )
     return files
+
+
+def _output_job_context(path):
+    output_root = (BASE_DIR / "analysis-outputs").resolve()
+    current = path.parent
+    while current != output_root and output_root in current.parents:
+        inputs_path = current / "inputs.json"
+        job_path = current / "job.json"
+        inputs = read_runtime_json(inputs_path, []) if inputs_path.exists() else []
+        job = read_runtime_json(job_path, {}) if job_path.exists() else {}
+        if isinstance(job, dict) and not inputs:
+            inputs = job.get("inputs", [])
+        if inputs or job:
+            first = str(inputs[0]) if isinstance(inputs, list) and inputs else ""
+            dataset = ""
+            if first:
+                try:
+                    dataset = Path(first).resolve().relative_to(DATA_DIR.resolve()).parts[0]
+                except (ValueError, IndexError):
+                    dataset = ""
+            return dataset, current.name
+        current = current.parent
+    relative = path.resolve().relative_to(output_root)
+    return "", relative.parts[0] if relative.parts else "analysis-outputs"
+
+
+def list_segmentation_outputs(limit=300):
+    root = BASE_DIR / "analysis-outputs"
+    if not root.exists():
+        return []
+    candidates = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
+            continue
+        name = path.name.lower()
+        if not any(token in name for token in ("mask", "overlay", "segmentation")):
+            continue
+        candidates.append(path)
+    candidates.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+    results = []
+    for path in candidates[:limit]:
+        dataset, job_id = _output_job_context(path)
+        relative = path.relative_to(BASE_DIR).as_posix()
+        results.append(
+            {
+                "name": path.name,
+                "path": relative,
+                "size_bytes": path.stat().st_size,
+                "size_human": format_bytes(path.stat().st_size),
+                "kind": "image",
+                "ext": path.suffix.lower(),
+                "dataset": dataset or "Generated analysis output",
+                "group": job_id,
+                "source": "analysis-output",
+            }
+        )
+    return results
 
 
 def list_archive(path, limit=200):
@@ -545,7 +1262,7 @@ class IndexHandler(tornado.web.RequestHandler):
     def get(self):
         index_path = WEB_DIR / "index.html"
         self.set_header("Content-Type", "text/html; charset=utf-8")
-        self.write(index_path.read_text())
+        self.write(index_path.read_text(encoding="utf-8"))
 
 
 class DatasetsHandler(tornado.web.RequestHandler):
@@ -576,26 +1293,37 @@ class DatasetMetadataHandler(tornado.web.RequestHandler):
 class CategoryHandler(tornado.web.RequestHandler):
     def get(self, category):
         category = category.lower()
+        if category == "segmentation":
+            self.write(
+                {
+                    "files": list_segmentation_outputs(),
+                    "empty_message": "No generated segmentation masks or overlays were found. Run a segmentation workflow first.",
+                }
+            )
+            return
         results = []
         for entry in list_datasets():
             dataset_path = safe_dataset_path(entry["path"])
             for info in list_files(dataset_path):
                 kind = info["kind"]
+                info["dataset"] = entry["name"]
                 if category == "datasets":
-                    results.append(info)
-                elif category == "segmentation" and kind in {"image", "archive"}:
                     results.append(info)
                 elif category == "features" and kind in {"table", "gzip"}:
                     results.append(info)
                 elif category == "analysis" and kind == "analysis":
                     results.append(info)
-        self.write({"files": results})
+        empty_messages = {
+            "features": "No feature or manifest tables were found in the datasets.",
+            "analysis": "No AnnData/HDF5 files are present. This view is intended for .h5ad, .h5, or .hdf5 downstream-analysis datasets, not CSV morphology results.",
+        }
+        self.write({"files": results, "empty_message": empty_messages.get(category, "No items found.")})
 
 
 class PreviewHandler(tornado.web.RequestHandler):
     def get(self):
         rel_path = self.get_argument("path")
-        path = safe_dataset_path(rel_path)
+        path, source = safe_visualization_path(rel_path)
         if not path.exists():
             self.set_status(404)
             self.write({"error": "File not found"})
@@ -625,7 +1353,11 @@ class PreviewHandler(tornado.web.RequestHandler):
             if path.suffix.lower() in {".tif", ".tiff"}:
                 payload["preview"] = preview_tiff(path)
             else:
-                payload["preview"] = {"preview_url": f"/files/{rel_path}"}
+                if source == "analysis-output":
+                    output_rel = path.relative_to((BASE_DIR / "analysis-outputs").resolve()).as_posix()
+                    payload["preview"] = {"preview_url": f"/analysis-output-files/{output_rel}"}
+                else:
+                    payload["preview"] = {"preview_url": f"/files/{rel_path}"}
         else:
             payload["preview"] = {"download_url": f"/files/{rel_path}"}
 
@@ -662,11 +1394,28 @@ class ExtractHandler(tornado.web.RequestHandler):
 
 class AgentStateHandler(tornado.web.RequestHandler):
     def get(self):
+        active_jobs = CODEX_JOBS.list_active_jobs()
+        morphology_job_id = str(MORPHOLOGY_ACTIVE.get("job_id") or "")
+        active_morphology_jobs = []
+        if morphology_job_id:
+            morphology_dir = MORPHOLOGY_OUTPUT_DIR / morphology_job_id
+            morphology_job = read_runtime_json(morphology_dir / "job.json", {})
+            if morphology_job.get("status") in {"queued", "running"}:
+                active_morphology_jobs.append(
+                    {
+                        **morphology_job,
+                        "id": morphology_job_id,
+                        "progress": read_runtime_json(morphology_dir / "progress.json", {}),
+                    }
+                )
         self.write(
             {
                 "studio_root": str(STUDIO_DIR),
                 "codex_available": bool(shutil.which("codex")),
                 "default_model": CODEX_JOBS.default_model,
+                "active_jobs": active_jobs,
+                "active_morphology_jobs": active_morphology_jobs,
+                "active_job_count": len(active_jobs) + len(active_morphology_jobs),
                 "recent_jobs": CODEX_JOBS.list_jobs(limit=10),
             }
         )
@@ -723,7 +1472,41 @@ class AgentCodexJobHandler(tornado.web.RequestHandler):
             self.write({"error": "job id is required"})
             return
         try:
-            self.write(CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True))
+            response = CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True)
+            morphology_artifacts = discover_agent_morphology_artifacts(job_id)
+            viability_artifacts = discover_agent_viability_artifacts(job_id)
+            profiler_artifacts = discover_agent_profiler_artifacts(job_id)
+            if reconcile_orphaned_profiler_agent(job_id, profiler_artifacts):
+                response = CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True)
+            if response.get("job", {}).get("status") == "succeeded" and morphology_artifacts is None:
+                job_payload = read_runtime_json(CODEX_JOBS.job_dir(job_id) / "input.json", {})
+                execution_policy = job_payload.get("extra_context", {}).get("execution_policy", {})
+                workflow_policy = execution_policy.get("workflow_policy", {})
+                job_purpose = job_payload.get("extra_context", {}).get("job_purpose", "analysis_run")
+                if workflow_policy.get("execution_mode") == "managed_backend" and job_purpose != "result_summary":
+                    CODEX_JOBS.update_job(
+                        job_id,
+                        {
+                            "status": "failed",
+                            "error": "managed_submission_failed",
+                            "detail": "Codex finished without creating the required managed morphology job.",
+                        },
+                    )
+                    response = CODEX_JOBS.job_status(job_id, include_logs=True, include_output=True)
+            response["morphology_artifacts"] = morphology_artifacts
+            response["viability_artifacts"] = viability_artifacts
+            response["profiler_artifacts"] = profiler_artifacts
+            if response.get("job", {}).get("status") in {"succeeded", "failed", "cancelled"}:
+                report_text = str(response.get("output_text") or "").strip()
+                if report_text:
+                    job_payload = read_runtime_json(CODEX_JOBS.job_dir(job_id) / "input.json", {})
+                    if isinstance(job_payload, dict) and job_payload.get("extra_context", {}).get("job_purpose") == "result_summary":
+                        persist_agent_result_summary(job_payload, report_text)
+                    AGENT_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+                    report_path = AGENT_REPORT_DIR / f"{re.sub(r'[^A-Za-z0-9_.-]', '', job_id)}.md"
+                    report_path.write_text(report_text + "\n", encoding="utf-8")
+                    response["report_url"] = "/analysis-output-files/organoid_agent_studio/reports/" + report_path.name
+            self.write(response)
         except FileNotFoundError:
             self.set_status(404)
             self.write({"error": "job not found"})
@@ -741,6 +1524,24 @@ class AgentCodexResultHandler(tornado.web.RequestHandler):
         except FileNotFoundError:
             self.set_status(404)
             self.write({"error": "job not found"})
+
+
+class AgentCodexCancelHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        job_id = str(payload.get("job_id") or "").strip()
+        if not job_id:
+            self.set_status(400)
+            self.write({"error": "job_id is required"})
+            return
+        try:
+            self.write(CODEX_JOBS.cancel_job(job_id))
+        except FileNotFoundError:
+            self.set_status(404)
+            self.write({"error": "job not found"})
+        except ValueError as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
 
 
 class AgentChatHandler(tornado.web.RequestHandler):
@@ -762,6 +1563,49 @@ class AgentChatHandler(tornado.web.RequestHandler):
             self.set_status(400)
             self.write({"error": "message is required"})
             return
+        selected_dataset = str(payload.get("selected_dataset") or "").strip()
+        selected_files = payload.get("selected_files") or []
+        if not isinstance(selected_files, list):
+            self.set_status(400)
+            self.write({"error": "selected_files must be a list"})
+            return
+        dataset_context = {}
+        try:
+            if selected_dataset:
+                dataset_path = safe_dataset_path(selected_dataset)
+                if not dataset_path.is_dir():
+                    raise ValueError("Selected dataset was not found")
+                dataset_context = {
+                    "selected_dataset": {
+                        "relative_path": selected_dataset,
+                        "absolute_path": str(dataset_path),
+                    },
+                    "selected_files": [],
+                    "selection_rule": "Use only the selected files when present; otherwise use the selected dataset directory.",
+                }
+                for raw_path in selected_files:
+                    rel_path = str(raw_path).strip().replace("\\", "/")
+                    file_path = safe_dataset_path(rel_path)
+                    if not file_path.is_file() or dataset_path not in file_path.parents:
+                        raise ValueError(f"Selected file is outside the selected dataset: {rel_path}")
+                    dataset_context["selected_files"].append(
+                        {"relative_path": rel_path, "absolute_path": str(file_path)}
+                    )
+            elif selected_files:
+                raise ValueError("Select a dataset before selecting files")
+        except ValueError as exc:
+            self.set_status(400)
+            self.write({"error": "invalid_dataset_selection", "detail": str(exc)})
+            return
+        workflow_id = str(payload.get("workflow_id") or "organoid_analysis").strip()
+        workflows = WORKFLOW_SETTINGS.get("workflows", {})
+        workflow_policy = workflows.get(workflow_id, workflows.get("organoid_analysis", {}))
+        execution_policy = {
+            "workflow_id": workflow_id,
+            "global_policy": WORKFLOW_SETTINGS.get("global_policy", {}),
+            "workflow_policy": workflow_policy,
+            "configured_environments": WORKFLOW_SETTINGS.get("environments", {}),
+        }
         user_message = CHAT_STORE.append_message(session_id, "user", message)
         transcript = CHAT_STORE.list_messages(session_id)[-12:]
         tool = str(payload.get("tool") or "response")
@@ -774,6 +1618,11 @@ class AgentChatHandler(tornado.web.RequestHandler):
             "allow_edits": bool(payload.get("allow_edits", tool == "assistant")),
             "model": payload.get("model"),
             "reasoning": payload.get("reasoning"),
+            "extra_context": {
+                "analysis_input": dataset_context,
+                "execution_policy": execution_policy,
+                "job_purpose": str(payload.get("job_purpose") or "analysis_run"),
+            },
         }
         try:
             job_status = CODEX_JOBS.submit_job(job_payload)
@@ -798,6 +1647,462 @@ class AgentChatHandler(tornado.web.RequestHandler):
         )
 
 
+class FluorescenceStatusHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write(fluorescence_runtime_status())
+
+
+class FluorescenceCancelHandler(tornado.web.RequestHandler):
+    def post(self):
+        global FLUORESCENCE_ACTIVE_PROCESS, FLUORESCENCE_ACTIVE_JOB_ID
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        requested_id = str(payload.get("job_id") or "").strip()
+        if not FLUORESCENCE_ACTIVE_JOB_ID or (requested_id and requested_id != FLUORESCENCE_ACTIVE_JOB_ID):
+            self.set_status(404)
+            self.write({"error": "No matching active fluorescence job was found."})
+            return
+        proc = FLUORESCENCE_ACTIVE_PROCESS
+        if proc is not None and proc.poll() is None:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                proc.kill()
+        job_id = FLUORESCENCE_ACTIVE_JOB_ID
+        progress_path = FLUORESCENCE_OUTPUT_DIR / job_id / "progress.json"
+        progress = read_runtime_json(progress_path, {})
+        progress.update({"status": "cancelled", "cancelled": True})
+        progress_path.write_text(json.dumps(progress, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        FLUORESCENCE_ACTIVE_JOB_ID = None
+        self.write({"job_id": job_id, "status": "cancelled"})
+
+
+class FluorescenceImagesHandler(tornado.web.RequestHandler):
+    def get(self):
+        dataset = self.get_argument("dataset", "").strip()
+        if not dataset:
+            self.set_status(400)
+            self.write({"error": "dataset is required"})
+            return
+        try:
+            root = safe_dataset_path(dataset)
+        except ValueError as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+            return
+        if not root.is_dir():
+            self.set_status(404)
+            self.write({"error": "dataset not found"})
+            return
+        images = []
+        for path in sorted(root.rglob("*")):
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTS:
+                stat = path.stat()
+                images.append(
+                    {
+                        "name": path.name,
+                        "path": str(path.relative_to(DATA_DIR)).replace("\\", "/"),
+                        "size_bytes": stat.st_size,
+                        "size_human": format_bytes(stat.st_size),
+                    }
+                )
+        self.write({"dataset": dataset, "images": images})
+
+
+class ReviewHandler(tornado.web.RequestHandler):
+    def get(self):
+        job_id = str(self.get_argument("job_id", "")).strip()
+        target_key = str(self.get_argument("target_key", "")).strip()
+        self.write({"reviews": REVIEW_STORE.list(job_id, target_key)})
+
+    def post(self):
+        try:
+            payload = json.loads(self.request.body.decode("utf-8") or "{}")
+            self.write(REVIEW_STORE.upsert(payload))
+        except (ValueError, json.JSONDecodeError) as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+
+
+class FluorescenceRunHandler(tornado.web.RequestHandler):
+    async def post(self):
+        global FLUORESCENCE_ACTIVE_JOB_ID
+        try:
+            payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            self.set_status(400)
+            self.write({"error": "invalid JSON body"})
+            return
+        raw_paths = payload.get("paths")
+        if not isinstance(raw_paths, list) or not raw_paths:
+            self.set_status(400)
+            self.write({"error": "select at least one dataset image"})
+            return
+        if len(raw_paths) > MAX_FLUORESCENCE_FILES:
+            self.set_status(400)
+            self.write({"error": f"a batch may contain at most {MAX_FLUORESCENCE_FILES} images"})
+            return
+        try:
+            paths = []
+            for raw_path in raw_paths:
+                path = safe_dataset_path(str(raw_path))
+                if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
+                    raise ValueError(f"unsupported dataset image: {raw_path}")
+                paths.append(path)
+        except ValueError as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+            return
+        status = fluorescence_runtime_status()
+        if not status["ready"]:
+            self.set_status(503)
+            self.write({"error": "fluorescence runtime or weights are not ready", "status": status})
+            return
+        if FLUORESCENCE_LOCK.locked():
+            self.set_status(409)
+            self.write({"error": "another fluorescence prediction job is using the GPU"})
+            return
+        order = "asc" if str(payload.get("order", "desc")).lower() == "asc" else "desc"
+        instruction = re.sub(r"\s+", " ", str(payload.get("instruction") or "Detect organoid viability and explain the image evidence.")).strip()[:500]
+        language = str(payload.get("language") or "auto").lower()
+        if language not in {"auto", "en", "zh"}:
+            self.set_status(400)
+            self.write({"error": "language must be auto, en, or zh"})
+            return
+        job_id = "fluorescence-" + time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        output_dir = FLUORESCENCE_OUTPUT_DIR / job_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        inputs_path = output_dir / "inputs.json"
+        inputs_path.write_text(json.dumps([str(path) for path in paths], ensure_ascii=False, indent=2), encoding="utf-8")
+        (output_dir / "progress.json").write_text(
+            json.dumps(
+                {
+                    "status": "starting",
+                    "total": len(paths),
+                    "completed": 0,
+                    "succeeded": 0,
+                    "failed": 0,
+                    "current_index": 0,
+                    "current_file": paths[0].name if paths else None,
+                    "percent": 0.0,
+                    "elapsed_seconds": 0.0,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        viability_python = workflow_python("viability_windows_python", "ORGANOID_FLUORESCENCE_PYTHON")
+        if viability_python is None:
+            self.set_status(500)
+            self.write({"error": "No usable viability Python was found. Set ORGANOID_FLUORESCENCE_PYTHON or configure viability_windows_python."})
+            return
+        command = [
+            str(viability_python),
+            str(BASE_DIR / "fluorescence_prediction" / "run.py"),
+            "--inputs-json",
+            str(inputs_path),
+            "--output-dir",
+            str(output_dir),
+            "--order",
+            order,
+            "--instruction",
+            instruction,
+            "--language",
+            language,
+            "--max-files",
+            str(MAX_FLUORESCENCE_FILES),
+        ]
+        FLUORESCENCE_ACTIVE_JOB_ID = job_id
+        try:
+            completed = await run_in_thread(run_fluorescence_subprocess, command)
+        except subprocess.TimeoutExpired:
+            self.set_status(504)
+            self.write({"error": "fluorescence prediction exceeded the two-hour timeout", "job_id": job_id})
+            return
+        finally:
+            FLUORESCENCE_ACTIVE_JOB_ID = None
+        result_path = output_dir / "results.json"
+        if not result_path.exists():
+            self.set_status(500)
+            self.write(
+                {
+                    "error": "fluorescence workflow did not create results.json",
+                    "job_id": job_id,
+                    "returncode": completed.returncode,
+                    "stdout": completed.stdout[-4000:],
+                    "stderr": completed.stderr[-4000:],
+                }
+            )
+            return
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        base_url = f"/fluorescence-outputs/{job_id}"
+        for sample in result.get("samples", []):
+            sample["asset_urls"] = {key: f"{base_url}/{value}" for key, value in sample.get("assets", {}).items()}
+        result.update(
+            {
+                "job_id": job_id,
+                "returncode": completed.returncode,
+                "stdout_tail": completed.stdout[-4000:],
+                "stderr_tail": completed.stderr[-4000:],
+                "results_url": f"{base_url}/results.json",
+                "csv_url": f"{base_url}/results.csv",
+                "report_url": f"{base_url}/report.md",
+            }
+        )
+        persist_viability_results_table(result, output_dir / "report.md")
+        self.set_status(200 if result.get("samples") else 500)
+        self.write(result)
+
+
+class OrganoidProfilerRunHandler(tornado.web.RequestHandler):
+    async def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        raw_paths = payload.get("paths")
+        if not isinstance(raw_paths, list) or not raw_paths:
+            self.set_status(400)
+            self.write({"error": "Select one or more profiler TIFF files."})
+            return
+        if PROFILER_LOCK.locked():
+            self.set_status(409)
+            self.write({"error": "Another organoid profiler job is already running."})
+            return
+        try:
+            paths = []
+            for item in raw_paths:
+                path = safe_dataset_path(str(item))
+                if path.is_dir():
+                    paths.extend(sorted(path.rglob("*.tif")))
+                else:
+                    paths.append(path)
+            paths = list(dict.fromkeys(paths))
+            if any(not path.is_file() or path.suffix.lower() not in {".tif", ".tiff"} for path in paths):
+                raise ValueError("The organoid profiler accepts TIFF files only.")
+            dataset_dirs = {path.resolve().relative_to(DATA_DIR.resolve()).parts[0] for path in paths}
+            if dataset_dirs != {"06_OrganoidProfiler_49"}:
+                raise ValueError("This workflow accepts only the 06_OrganoidProfiler_49 dataset.")
+            pixel_size = payload.get("pixel_size")
+            if pixel_size in (None, "", "null"):
+                pixel_size = None
+            else:
+                pixel_size = float(pixel_size)
+                if not math.isfinite(pixel_size) or pixel_size <= 0:
+                    raise ValueError("pixel_size must be a positive number.")
+        except (ValueError, TypeError) as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+            return
+        job_id = "profiler-" + time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        output_dir = PROFILER_OUTPUT_DIR / job_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        inputs_path = output_dir / "inputs.json"
+        inputs_path.write_text(json.dumps([str(path) for path in paths], ensure_ascii=False, indent=2), encoding="utf-8")
+        python_path = workflow_python("viability_windows_python", "ORGANOID_FLUORESCENCE_PYTHON")
+        if python_path is None:
+            self.set_status(500)
+            self.write({"error": "No usable navila Python was found for YOLO+SAM profiler."})
+            return
+        command = [str(python_path), str(BASE_DIR / "scripts" / "run_organoid_profiler.py"), "--inputs-json", str(inputs_path), "--output-dir", str(output_dir)]
+        if pixel_size is not None:
+            command.extend(["--pixel-size", str(pixel_size)])
+        if bool(payload.get("generate_charts", False)):
+            command.append("--generate-charts")
+        try:
+            completed = await run_in_thread(run_profiler_subprocess, command)
+        except subprocess.TimeoutExpired:
+            self.set_status(504)
+            self.write({"error": "organoid profiler exceeded the timeout", "job_id": job_id})
+            return
+        result_path = output_dir / "results.json"
+        if completed.returncode != 0 or not result_path.exists():
+            self.set_status(500)
+            self.write({"error": "organoid profiler did not create results.json", "job_id": job_id, "returncode": completed.returncode, "stderr": completed.stderr[-4000:]})
+            return
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        base_url = f"/profiler-outputs/{job_id}"
+        for row in result.get("rows", []):
+            row["asset_urls"] = {key: f"{base_url}/{Path(row[key]).relative_to(output_dir).as_posix()}" for key in ("overlay", "crop", "mask")}
+        result["chart_urls"] = []
+        for chart in result.get("charts", []):
+            chart = dict(chart)
+            chart_path = Path(chart["path"])
+            chart["url"] = f"{base_url}/{chart_path.relative_to(output_dir).as_posix()}"
+            result["chart_urls"].append(chart)
+        result.update({"job_id": job_id, "results_url": f"{base_url}/results.json", "csv_url": f"{base_url}/results.csv"})
+        self.write(result)
+
+
+class AnalysisChartHandler(tornado.web.RequestHandler):
+    async def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        raw_input = str(payload.get("input") or "").strip()
+        if not raw_input:
+            self.set_status(400)
+            self.write({"error": "input must point to a results.json or results.csv under analysis-outputs."})
+            return
+        try:
+            candidate = Path(raw_input)
+            input_path = candidate.resolve() if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
+            input_path.relative_to((BASE_DIR / "analysis-outputs").resolve())
+            if not input_path.is_file() or input_path.suffix.lower() not in {".json", ".csv"}:
+                raise ValueError("input must be an existing results.json or results.csv under analysis-outputs")
+        except (OSError, ValueError) as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+            return
+        output_dir = BASE_DIR / "analysis-outputs" / "charts" / ("chart-" + time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8])
+        python_path = workflow_python("viability_windows_python", "ORGANOID_FLUORESCENCE_PYTHON")
+        if python_path is None:
+            self.set_status(500)
+            self.write({"error": "No configured Python environment is available for chart generation."})
+            return
+        command = [str(python_path), str(BASE_DIR / "scripts" / "generate_analysis_charts.py"), "--input", str(input_path), "--output-dir", str(output_dir), "--metrics", str(payload.get("metrics") or "area,growth_rate")]
+        completed = await run_in_thread(subprocess.run, command, cwd=BASE_DIR, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        charts_path = output_dir / "charts.json"
+        if completed.returncode != 0 or not charts_path.exists():
+            self.set_status(500)
+            self.write({"error": "chart generation failed", "stderr": completed.stderr[-4000:]})
+            return
+        charts = json.loads(charts_path.read_text(encoding="utf-8")).get("charts", [])
+        base_url = "/analysis-output-files/" + output_dir.relative_to(BASE_DIR / "analysis-outputs").as_posix()
+        for chart in charts:
+            chart["url"] = f"{base_url}/{Path(chart['filename']).as_posix()}"
+        self.write({"status": "succeeded", "charts": charts, "output_dir": str(output_dir)})
+
+
+def run_profiler_subprocess(command):
+    with PROFILER_LOCK:
+        return subprocess.run(command, cwd=BASE_DIR, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=7200)
+
+
+class MorphologyRunHandler(tornado.web.RequestHandler):
+    async def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        workflow_id = str(payload.get("workflow_id") or "zhengyu").strip()
+        workflow_adapter = MORPHOLOGY_WORKFLOW_ADAPTERS.get(workflow_id)
+        if workflow_adapter is None:
+            self.set_status(400)
+            self.write({"error": f"Unsupported managed morphology workflow: {workflow_id}."})
+            return
+        raw_paths = payload.get("paths")
+        if not isinstance(raw_paths, list) or not raw_paths:
+            self.set_status(400)
+            self.write({"error": "Select one or more images before starting morphology analysis."})
+            return
+        if MORPHOLOGY_LOCK.locked() or MORPHOLOGY_ACTIVE.get("job_id"):
+            self.set_status(409)
+            self.write({"error": "Another morphology job is already running."})
+            return
+        try:
+            paths = [safe_dataset_path(str(item)) for item in raw_paths]
+            allowed_extensions = workflow_adapter.get("extensions", {".tif", ".tiff"})
+            if any(not path.is_file() or path.suffix.lower() not in allowed_extensions for path in paths):
+                allowed = ", ".join(sorted(allowed_extensions))
+                raise ValueError(f"Workflow {workflow_id} accepts only these image types: {allowed}.")
+            selected_dataset_dirs = {path.resolve().relative_to(DATA_DIR.resolve()).parts[0] for path in paths}
+            unexpected_dirs = selected_dataset_dirs - workflow_adapter["dataset_dirs"]
+            if unexpected_dirs:
+                expected = ", ".join(sorted(workflow_adapter["dataset_dirs"]))
+                actual = ", ".join(sorted(unexpected_dirs))
+                raise ValueError(
+                    f"Workflow {workflow_id} expects dataset {expected}; selected files came from {actual}."
+                )
+            invalid_names = [
+                path.name
+                for path in paths
+                if re.search(workflow_adapter["filename_pattern"], path.name, flags=re.IGNORECASE) is None
+            ]
+            if invalid_names:
+                raise ValueError(
+                    f"Workflow {workflow_id} cannot parse condition/day metadata from: {', '.join(invalid_names[:3])}."
+                )
+        except ValueError as exc:
+            self.set_status(400)
+            self.write({"error": str(exc)})
+            return
+        magnifications = set()
+        for path in paths:
+            match = re.search(r"__(\d+)x", path.name, flags=re.IGNORECASE)
+            if match:
+                magnifications.add(f"{match.group(1)}x")
+        if len(paths) > 1 and len(magnifications) > 1:
+            self.set_status(400)
+            self.write({"error": f"Mixed magnifications are not comparable: {', '.join(sorted(magnifications))}. Select images with one magnification or run them separately."})
+            return
+        job_id = "morphology-" + time.strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:8]
+        job_dir = MORPHOLOGY_OUTPUT_DIR / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        progress_path = job_dir / "progress.json"
+        instruction = re.sub(r"\s+", " ", str(payload.get("instruction") or "Analyze organoid morphology and report segmentation and quantitative evidence.")).strip()[:1000]
+        output_options = morphology_output_options(instruction)
+        parent_job_id = re.sub(r"[^A-Za-z0-9_.-]", "", str(payload.get("parent_job_id") or ""))
+        job = {"job_id": job_id, "status": "queued", "created_at": time.time(), "inputs": [str(path) for path in paths], "magnifications": sorted(magnifications), "output_dir": str(job_dir), "workflow_id": workflow_id, "instruction": instruction, "output_options": output_options, "parent_job_id": parent_job_id or None}
+        (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        progress_path.write_text(json.dumps({"status": "queued", "total": len(paths), "completed": 0, "percent": 0.0}, indent=2), encoding="utf-8")
+        cellpose_python = workflow_python("cellpose_windows_python", "ORGANOID_CELLPOSE_PYTHON")
+        if cellpose_python is None:
+            self.set_status(503)
+            self.write(
+                {
+                    "error": (
+                        "No usable Cellpose Python was found. Set ORGANOID_CELLPOSE_PYTHON "
+                        "or install requirements-analysis.txt in the server environment."
+                    )
+                }
+            )
+            return
+        entrypoint = BASE_DIR / workflow_adapter.get("entrypoint", "scripts/run_density_growth_d12_analysis.py")
+        command = [str(cellpose_python), str(entrypoint), *workflow_adapter.get("entrypoint_args", [])]
+        command.extend(["--out-dir", str(job_dir), "--inputs", *[str(path) for path in paths], "--progress-file", str(progress_path), "--instruction", instruction])
+        for option, flag in {
+            "statistics_figures": "--statistics-figures",
+            "comparison_gallery": "--comparison-gallery",
+            "object_crops": "--object-crops",
+            "diagnostic_images": "--diagnostic-images",
+            "results_csv": "--results-csv",
+        }.items():
+            if output_options[option]:
+                command.append(flag)
+        if bool(payload.get("overwrite")):
+            command.append("--overwrite")
+        MORPHOLOGY_ACTIVE.update({"job_id": job_id, "process": None})
+        task = asyncio.create_task(execute_morphology_job(job_id, command, job_dir))
+        MORPHOLOGY_TASKS.add(task)
+        task.add_done_callback(MORPHOLOGY_TASKS.discard)
+        self.set_status(202)
+        self.write({"job_id": job_id, "status": "queued", "poll_url": f"/api/morphology/status?id={job_id}", "output_dir": str(job_dir)})
+
+
+class MorphologyStatusHandler(tornado.web.RequestHandler):
+    def get(self):
+        job_id = re.sub(r"[^A-Za-z0-9_.-]", "", self.get_argument("id", ""))
+        if not job_id:
+            job_id = str(MORPHOLOGY_ACTIVE.get("job_id") or "")
+        job_dir = MORPHOLOGY_OUTPUT_DIR / job_id
+        job = read_runtime_json(job_dir / "job.json")
+        if not job:
+            self.set_status(404)
+            self.write({"error": "Morphology job not found."})
+            return
+        self.write({"job": job, "progress": read_runtime_json(job_dir / "progress.json", {}), "stdout_tail": tail_text(job_dir / "stdout.log"), "stderr_tail": tail_text(job_dir / "stderr.log"), "result": morphology_result_payload(job_id, job_dir) if job.get("status") == "succeeded" else None})
+
+
+class MorphologyCancelHandler(tornado.web.RequestHandler):
+    def post(self):
+        payload = json.loads(self.request.body.decode("utf-8") or "{}")
+        job_id = re.sub(r"[^A-Za-z0-9_.-]", "", str(payload.get("job_id") or ""))
+        proc = MORPHOLOGY_ACTIVE.get("process") if MORPHOLOGY_ACTIVE.get("job_id") == job_id else None
+        if proc and proc.poll() is None:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                proc.kill()
+        job_dir = MORPHOLOGY_OUTPUT_DIR / job_id
+        job = read_runtime_json(job_dir / "job.json", {})
+        job.update({"status": "cancelled", "finished_at": time.time(), "error": "cancelled_by_user"})
+        (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.write({"job": job})
+
+
 def make_app():
     return tornado.web.Application(
         [
@@ -812,11 +2117,26 @@ def make_app():
             (r"/api/agent/databases", AgentDatabasesHandler),
             (r"/api/agent/session", AgentSessionHandler),
             (r"/api/agent/chat", AgentChatHandler),
+            (r"/api/reviews", ReviewHandler),
             (r"/api/agent/pipeline/parse", AgentPipelineParseHandler),
             (r"/api/agent/codex/job", AgentCodexJobHandler),
             (r"/api/agent/codex/result", AgentCodexResultHandler),
+            (r"/api/agent/codex/cancel", AgentCodexCancelHandler),
+            (r"/api/fluorescence/status", FluorescenceStatusHandler),
+            (r"/api/fluorescence/cancel", FluorescenceCancelHandler),
+            (r"/api/fluorescence/images", FluorescenceImagesHandler),
+            (r"/api/fluorescence/run", FluorescenceRunHandler),
+            (r"/api/organoid-profiler/run", OrganoidProfilerRunHandler),
+            (r"/api/charts/generate", AnalysisChartHandler),
+            (r"/api/morphology/run", MorphologyRunHandler),
+            (r"/api/morphology/status", MorphologyStatusHandler),
+            (r"/api/morphology/cancel", MorphologyCancelHandler),
+            (r"/morphology-outputs/(.*)", tornado.web.StaticFileHandler, {"path": str(MORPHOLOGY_OUTPUT_DIR)}),
+            (r"/analysis-output-files/(.*)", tornado.web.StaticFileHandler, {"path": str(BASE_DIR / "analysis-outputs")}),
             (r"/files/(.*)", tornado.web.StaticFileHandler, {"path": str(DATA_DIR)}),
             (r"/previews/(.*)", tornado.web.StaticFileHandler, {"path": str(PREVIEW_DIR)}),
+            (r"/fluorescence-outputs/(.*)", tornado.web.StaticFileHandler, {"path": str(FLUORESCENCE_OUTPUT_DIR)}),
+            (r"/profiler-outputs/(.*)", tornado.web.StaticFileHandler, {"path": str(PROFILER_OUTPUT_DIR)}),
             (r"/static/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR)}),
         ],
         debug=True,
